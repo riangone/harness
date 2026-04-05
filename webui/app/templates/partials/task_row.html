@@ -1,0 +1,33 @@
+{% for task in tasks %}
+<tr id="task-row-{{ task.id }}">
+    <td>{{ task.title }}</td>
+    <td class="text-muted">
+        {% for project in projects %}
+            {% if project.id == task.project_id %}{{ project.name }}{% endif %}
+        {% endfor %}
+        {% if not task.project_id %}-{% endif %}
+    </td>
+    <td class="text-muted">
+        {% for agent in agents %}
+            {% if agent.id == task.agent_id %}{{ agent.name }}{% endif %}
+        {% endfor %}
+        {% if not task.agent_id %}Auto{% endif %}
+    </td>
+    <td><span class="badge badge-{{ task.status.value }}">{{ task.status.value }}</span></td>
+    <td class="text-muted">{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td class="actions-cell">
+        {% if task.status.value == 'pending' %}
+        <button class="btn btn-sm btn-primary"
+                hx-post="/tasks/{{ task.id }}/run"
+                hx-target="#run-result-{{ task.id }}"
+                hx-swap="innerHTML">{{ t('run') }}</button>
+        {% endif %}
+        <span id="run-result-{{ task.id }}"></span>
+        <button class="btn btn-sm btn-danger"
+                hx-delete="/tasks/{{ task.id }}"
+                hx-target="#task-row-{{ task.id }}"
+                hx-swap="outerHTML swap:1s"
+                hx-confirm="{{ t('are_you_sure') }}">{{ t('delete') }}</button>
+    </td>
+</tr>
+{% endfor %}

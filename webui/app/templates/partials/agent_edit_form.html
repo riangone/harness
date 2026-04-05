@@ -1,0 +1,48 @@
+<form hx-put="/agents/{{ agent.id }}"
+      hx-target="#agents-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) closeAgentModal()"
+      accept-charset="UTF-8">
+    <div class="form-group">
+        <label>{{ t('name') }}</label>
+        <input type="text" name="name" value="{{ agent.name }}" required>
+    </div>
+    <div class="form-group">
+        <label>{{ t('cli_command') }}</label>
+        <select name="cli_command" required>
+            <option value="claude" {% if agent.cli_command == 'claude' %}selected{% endif %}>claude</option>
+            <option value="qwen" {% if agent.cli_command == 'qwen' %}selected{% endif %}>qwen</option>
+            <option value="gemini" {% if agent.cli_command == 'gemini' %}selected{% endif %}>gemini</option>
+            <option value="codex" {% if agent.cli_command == 'codex' %}selected{% endif %}>codex</option>
+            <option value="gh-copilot" {% if agent.cli_command == 'gh-copilot' %}selected{% endif %}>gh-copilot</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>{{ t('role') }}</label>
+            <select name="role" required>
+                <option value="planner" {% if agent.role.value == 'planner' %}selected{% endif %}>planner</option>
+                <option value="generator" {% if agent.role.value == 'generator' %}selected{% endif %}>generator</option>
+                <option value="evaluator" {% if agent.role.value == 'evaluator' %}selected{% endif %}>evaluator</option>
+                <option value="researcher" {% if agent.role.value == 'researcher' %}selected{% endif %}>researcher</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>{{ t('priority') }} <small>({{ t('priority_hint') }})</small></label>
+            <input type="number" name="priority" value="{{ agent.priority }}" min="1" max="99">
+        </div>
+    </div>
+    <div class="form-group">
+        <label>{{ t('system_prompt') }}</label>
+        <textarea name="system_prompt" rows="5">{{ agent.system_prompt or '' }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>
+            <input type="checkbox" name="is_active" {% if agent.is_active %}checked{% endif %}> {{ t('active') }}
+        </label>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeAgentModal()">{{ t('cancel') }}</button>
+        <button type="submit" class="btn btn-primary">{{ t('save') }}</button>
+    </div>
+</form>

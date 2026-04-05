@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('dashboard') }} - Multi-AI Harness{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t('dashboard') }}</h2>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>{{ t('agents') }}</h3>
+        <div class="value">{{ agents_count }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>{{ t('projects') }}</h3>
+        <div class="value">{{ projects_count }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>{{ t('tasks') }}</h3>
+        <div class="value">{{ tasks_count }}</div>
+    </div>
+    <div class="stat-card">
+        <h3>{{ t('recent_runs') }}</h3>
+        <div class="value">{{ recent_runs|length }}</div>
+    </div>
+</div>
+
+<!-- Recent Tasks -->
+<h3 class="mb-1">{{ t('recent_tasks') }}</h3>
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>{{ t('title') }}</th>
+                <th>{{ t('status') }}</th>
+                <th>{{ t('created') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in recent_tasks %}
+            <tr>
+                <td>{{ task.title }}</td>
+                <td><span class="badge badge-{{ task.status.value }}">{{ task.status.value }}</span></td>
+                <td class="text-muted">{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="3" class="text-muted">{{ t('no_tasks_yet') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Recent Runs -->
+<h3 class="mb-1">{{ t('recent_runs') }}</h3>
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>{{ t('task') }}</th>
+                <th>{{ t('phase') }}</th>
+                <th>{{ t('status') }}</th>
+                <th>{{ t('started') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in recent_runs %}
+            <tr>
+                <td>{{ t('task') }} #{{ run.task_id }}</td>
+                <td>{{ run.phase }}</td>
+                <td><span class="badge badge-{{ run.status.value }}">{{ run.status.value }}</span></td>
+                <td class="text-muted">{{ run.started_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" class="text-muted">{{ t('no_runs_yet') }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

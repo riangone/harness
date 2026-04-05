@@ -1,0 +1,58 @@
+{% if runs %}
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>{{ t('task') }}</th>
+                <th>{{ t('agent') }}</th>
+                <th>{{ t('phase') }}</th>
+                <th>{{ t('status') }}</th>
+                <th>{{ t('started') }}</th>
+                <th>{{ t('duration') }}</th>
+                <th>{{ t('actions') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in runs %}
+            <tr>
+                <td>#{{ run.id }}</td>
+                <td>{{ t('task') }} #{{ run.task_id }}</td>
+                <td>{{ t('agent') }} #{{ run.agent_id }}</td>
+                <td>{{ run.phase }}</td>
+                <td><span class="badge badge-{{ run.status.value }}">{{ run.status.value }}</span></td>
+                <td class="text-muted">{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                <td class="text-muted">
+                    {% if run.finished_at %}
+                        {{ ((run.finished_at - run.started_at).total_seconds() | int) }}s
+                    {% else %}
+                        {{ t('running') }}...
+                    {% endif %}
+                </td>
+                <td class="actions-cell">
+                    <details>
+                        <summary class="btn btn-sm">{{ t('log') }}</summary>
+                        <div class="details-content">
+                            <div id="run-log-{{ run.id }}"
+                                 hx-get="/runs/{{ run.id }}/log"
+                                 hx-trigger="{% if run.status.value == 'running' %}every 2s{% else %}load{% endif %}"
+                                 hx-swap="outerHTML">
+                                <div class="log-block">{{ run.log or t('no_log_yet') }}</div>
+                            </div>
+                            {% if run.status.value == 'running' %}
+                            <button class="btn btn-sm btn-danger mt-1"
+                                    hx-post="/runs/{{ run.id }}/cancel"
+                                    hx-target="#run-log-{{ run.id }}"
+                                    hx-swap="outerHTML">{{ t('cancel') }}</button>
+                            {% endif %}
+                        </div>
+                    </details>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p class="text-muted">{{ t('no_runs_yet') }}</p>
+{% endif %}

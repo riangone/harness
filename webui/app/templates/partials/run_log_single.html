@@ -1,0 +1,14 @@
+<div id="run-log-{{ run.id }}"
+     {% if run.status.value == 'running' %}
+     hx-get="/runs/{{ run.id }}/log"
+     hx-trigger="every 2s"
+     hx-swap="outerHTML"
+     {% endif %}>
+    <div class="log-block">{{ run.log or t('no_log_yet') }}</div>
+    {% if run.status.value == 'running' %}
+    <button class="btn btn-sm btn-danger mt-1"
+            hx-post="/runs/{{ run.id }}/cancel"
+            hx-target="#run-log-{{ run.id }}"
+            hx-swap="outerHTML">{{ t('cancel') }}</button>
+    {% endif %}
+</div>

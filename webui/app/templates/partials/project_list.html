@@ -1,0 +1,15 @@
+{% for project in projects %}
+<tr id="project-row-{{ project.id }}">
+    <td>{{ project.name }}</td>
+    <td><code>{{ project.path }}</code></td>
+    <td class="text-muted">{{ (project.description or '')[:60] }}{% if project.description and project.description|length > 60 %}...{% endif %}</td>
+    <td class="text-muted">{{ project.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td class="actions-cell">
+        <button class="btn btn-sm btn-danger"
+                hx-delete="/projects/{{ project.id }}"
+                hx-target="#project-row-{{ project.id }}"
+                hx-swap="outerHTML swap:1s"
+                hx-confirm="Are you sure?">Delete</button>
+    </td>
+</tr>
+{% endfor %}

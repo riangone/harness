@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('projects') }} - Multi-AI Harness{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t('projects') }}</h2>
+</div>
+
+<!-- Add Project Form -->
+<details class="mb-2">
+    <summary>{{ t('add_project') }}</summary>
+    <div class="details-content">
+        <form hx-post="/projects" hx-target="#projects-tbody" hx-swap="innerHTML" accept-charset="UTF-8">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="name">{{ t('name') }}</label>
+                    <input type="text" id="name" name="name" required placeholder="e.g. my-web-app">
+                </div>
+                <div class="form-group">
+                    <label for="path">{{ t('path') }}</label>
+                    <input type="text" id="path" name="path" required placeholder="/home/user/projects/my-web-app">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="description">{{ t('description') }}</label>
+                <textarea id="description" name="description" placeholder="Project description..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">{{ t('add') }} {{ t('project') }}</button>
+        </form>
+    </div>
+</details>
+
+<!-- Projects List -->
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>{{ t('name') }}</th>
+                <th>{{ t('path') }}</th>
+                <th>{{ t('description') }}</th>
+                <th>{{ t('created') }}</th>
+                <th>{{ t('actions') }}</th>
+            </tr>
+        </thead>
+        <tbody id="projects-tbody"
+               hx-get="/projects/list"
+               hx-trigger="load, reloadProjectList from:body"
+               hx-swap="innerHTML">
+        </tbody>
+    </table>
+</div>
+{% endblock %}

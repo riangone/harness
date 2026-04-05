@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('runs') }} - Multi-AI Harness{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t('runs') }}</h2>
+</div>
+
+<!-- Runs List -->
+<div id="runs-list"
+     hx-get="/runs/list"
+     hx-trigger="load, every 3s, reloadRunList from:body"
+     hx-swap="innerHTML">
+</div>
+{% endblock %}

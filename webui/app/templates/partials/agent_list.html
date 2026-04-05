@@ -1,0 +1,56 @@
+{% for agent in agents %}
+<tr id="agent-row-{{ agent.id }}">
+    <td>{{ agent.name }}</td>
+    <td><code>{{ agent.cli_command }}</code></td>
+    <td><span class="badge badge-running">{{ agent.role.value }}</span></td>
+    <td class="text-muted">{{ (agent.system_prompt or '')[:50] }}{% if agent.system_prompt and agent.system_prompt|length > 50 %}...{% endif %}</td>
+    <td>{% if agent.is_active %}<span class="text-success">Yes</span>{% else %}<span class="text-muted">No</span>{% endif %}</td>
+    <td class="text-muted">{{ agent.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td class="actions-cell">
+        <details class="agent-edit">
+            <summary class="btn btn-sm">Edit</summary>
+            <div class="details-content">
+                <form hx-put="/agents/{{ agent.id }}" hx-target="#agent-row-{{ agent.id }}" hx-swap="outerHTML">
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input type="text" name="name" value="{{ agent.name }}" required>
+                    </div>
+                    <div class="form-group">
+                        <label>CLI Command</label>
+                        <select name="cli_command" required>
+                            <option value="claude" {% if agent.cli_command == 'claude' %}selected{% endif %}>claude</option>
+                            <option value="qwen" {% if agent.cli_command == 'qwen' %}selected{% endif %}>qwen</option>
+                            <option value="gemini" {% if agent.cli_command == 'gemini' %}selected{% endif %}>gemini</option>
+                            <option value="codex" {% if agent.cli_command == 'codex' %}selected{% endif %}>codex</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Role</label>
+                        <select name="role" required>
+                            <option value="planner" {% if agent.role.value == 'planner' %}selected{% endif %}>planner</option>
+                            <option value="generator" {% if agent.role.value == 'generator' %}selected{% endif %}>generator</option>
+                            <option value="evaluator" {% if agent.role.value == 'evaluator' %}selected{% endif %}>evaluator</option>
+                            <option value="researcher" {% if agent.role.value == 'researcher' %}selected{% endif %}>researcher</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>System Prompt</label>
+                        <textarea name="system_prompt">{{ agent.system_prompt or '' }}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" name="is_active" {% if agent.is_active %}checked{% endif %}> Active
+                        </label>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Save</button>
+                </form>
+            </div>
+        </details>
+        <button class="btn btn-sm btn-danger"
+                hx-delete="/agents/{{ agent.id }}"
+                hx-target="#agent-row-{{ agent.id }}"
+                hx-swap="outerHTML swap:1s"
+                hx-confirm="Are you sure?">Delete</button>
+    </td>
+</tr>
+{% endfor %}

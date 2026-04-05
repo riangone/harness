@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="{{ lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Multi-AI Harness{% endblock %}</title>
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/style.css">
+    <script>
+        // フラッシュ防止：レンダリング前にテーマを適用
+        (function() {
+            var t = localStorage.getItem('theme') || 'dark';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body hx-boost="true">
+<div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h1>Multi-AI Harness</h1>
+            <small>{{ t('webui_subtitle') }}</small>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('dashboard') }}</a></li>
+                <li><a href="/agents" class="{% if request.url.path.startswith('/agents') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('agents') }}</a></li>
+                <li><a href="/projects" class="{% if request.url.path.startswith('/projects') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('projects') }}</a></li>
+                <li><a href="/tasks" class="{% if request.url.path.startswith('/tasks') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('tasks') }}</a></li>
+                <li><a href="/runs" class="{% if request.url.path.startswith('/runs') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('runs') }}</a></li>
+            </ul>
+        </nav>
+        
+        <div class="theme-toggle">
+            <button onclick="toggleTheme()">
+                <span class="theme-icon">☀️</span>
+                <span class="theme-label">Light mode</span>
+            </button>
+        </div>
+        
+        <div class="lang-switcher">
+            <form method="post" action="" style="padding: 0;">
+                <select onchange="this.form.action='/lang/'+this.value; this.form.submit()">
+                    <option value="en" {% if lang=='en' %}selected{% endif %}>English</option>
+                    <option value="zh" {% if lang=='zh' %}selected{% endif %}>中文</option>
+                    <option value="ja" {% if lang=='ja' %}selected{% endif %}>日本語</option>
+                    <option value="ko" {% if lang=='ko' %}selected{% endif %}>한국어</option>
+                </select>
+            </form>
+        </div>
+        
+        <nav style="border-top: 1px solid var(--color-border); margin-top: 0.5rem;">
+            <ul>
+                <li><a href="/logout">{{ t('logout') }}</a></li>
+            </ul>
+        </nav>
+    </aside>
+    
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+</div>
+
+<button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="3" y1="12" x2="21" y2="12"></line>
+        <line x1="3" y1="6" x2="21" y2="6"></line>
+        <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+</button>
+
+<script>
+    function toggleSidebar() {
+        const sidebar = document.querySelector('.sidebar');
+        const overlay = document.querySelector('.sidebar-overlay');
+        sidebar.classList.toggle('open');
+        overlay.classList.toggle('active');
+    }
+
+    function closeSidebarIfMobile() {
+        if (window.innerWidth <= 768) {
+            document.querySelector('.sidebar').classList.remove('open');
+            document.querySelector('.sidebar-overlay').classList.remove('active');
+        }
+    }
+
+    function toggleTheme() {
+        const doc = document.documentElement;
+        const current = doc.getAttribute('data-theme');
+        const next = current === 'light' ? 'dark' : 'light';
+        doc.setAttribute('data-theme', next);
+        localStorage.setItem('theme', next);
+        updateThemeUI(next);
+    }
+
+    function updateThemeUI(theme) {
+        const icon = document.querySelector('.theme-icon');
+        const label = document.querySelector('.theme-label');
+        if (icon && label) {
+            icon.textContent = theme === 'light' ? '🌙' : '☀️';
+            label.textContent = theme === 'light' ? 'Dark mode' : 'Light mode';
+        }
+    }
+
+    // Initialize UI on load
+    (function() {
+        const t = localStorage.getItem('theme') || 'dark';
+        updateThemeUI(t);
+    })();
+
+    // HTMX: Handle modal closes and other events
+    document.addEventListener('htmx:afterOnLoad', function(evt) {
+        // You can add global logic here if needed
+    });
+</script>
+</body>
+</html>

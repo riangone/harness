@@ -1,0 +1,26 @@
+{% for agent in agents %}
+<tr id="agent-row-{{ agent.id }}">
+    <td data-label="{{ t('name') }}">{{ agent.name }}</td>
+    <td data-label="CLI"><code>{{ agent.cli_command }}</code></td>
+    <td data-label="{{ t('role') }}"><span class="badge badge-running">{{ agent.role.value }}</span></td>
+    <td data-label="{{ t('priority') }}">{{ agent.priority }}</td>
+    <td data-label="{{ t('system_prompt') }}" class="text-muted">
+        <span class="truncate">{{ (agent.system_prompt or '')[:50] }}{% if agent.system_prompt and agent.system_prompt|length > 50 %}...{% endif %}</span>
+    </td>
+    <td data-label="{{ t('active') }}">{% if agent.is_active %}<span class="text-success">{{ t('active') }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
+    <td data-label="{{ t('created') }}" class="text-muted">{{ agent.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td data-label="{{ t('actions') }}" class="actions-cell">
+        <button class="btn btn-sm"
+                hx-get="/agents/{{ agent.id }}/edit"
+                hx-target="#agent-modal-body"
+                hx-swap="innerHTML"
+                hx-indicator="#global-loader"
+                hx-on::after-request="openAgentModal()">{{ t('edit') }}</button>
+        <button class="btn btn-sm btn-danger"
+                hx-delete="/agents/{{ agent.id }}"
+                hx-target="#agent-row-{{ agent.id }}"
+                hx-swap="outerHTML swap:0.5s"
+                hx-confirm="{{ t('are_you_sure') }}">{{ t('delete') }}</button>
+    </td>
+</tr>
+{% endfor %}

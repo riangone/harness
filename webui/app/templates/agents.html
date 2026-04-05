@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('agents') }} - Multi-AI Harness{% endblock %}
+
+{% block content %}
+<!-- Edit Agent Modal -->
+<div id="agent-modal" class="modal-overlay" onclick="if(event.target===this)closeAgentModal()">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>{{ t('edit') }} {{ t('agent') }}</h3>
+            <button onclick="closeAgentModal()" class="modal-close-btn" aria-label="Close">✕</button>
+        </div>
+        <div id="agent-modal-body">
+            <!-- HTMX will load content here -->
+        </div>
+    </div>
+</div>
+
+<div class="page-header">
+    <h2>{{ t('agents') }}</h2>
+    <div class="htmx-indicator" id="global-loader">
+        <span class="text-muted small">Loading...</span>
+    </div>
+</div>
+
+<!-- Add Agent Form -->
+<details class="mb-3">
+    <summary>{{ t('add_agent') }}</summary>
+    <div class="details-content">
+        <form hx-post="/agents" hx-target="#agents-tbody" hx-swap="innerHTML" hx-indicator="#global-loader" accept-charset="UTF-8">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="name">{{ t('name') }}</label>
+                    <input type="text" id="name" name="name" required placeholder="e.g. Claude Planner">
+                </div>
+                <div class="form-group">
+                    <label for="cli_command">{{ t('cli_command') }}</label>
+                    <select id="cli_command" name="cli_command" required>
+                        <option value="claude">claude</option>
+                        <option value="qwen">qwen</option>
+                        <option value="gemini">gemini</option>
+                        <option value="codex">codex</option>
+                        <option value="gh-copilot">gh-copilot</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="role">{{ t('role') }}</label>
+                    <select id="role" name="role" required>
+                        <option value="planner">planner</option>
+                        <option value="generator">generator</option>
+                        <option value="evaluator">evaluator</option>
+                        <option value="researcher">researcher</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="priority">{{ t('priority') }} <small>({{ t('priority_hint') }})</small></label>
+                    <input type="number" id="priority" name="priority" value="10" min="1" max="99">
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="system_prompt">{{ t('system_prompt') }}</label>
+                <textarea id="system_prompt" name="system_prompt" placeholder="Additional instructions for the agent..."></textarea>
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                    <input type="checkbox" name="is_active" checked style="width: auto;"> {{ t('active') }}
+                </label>
+            </div>
+            <button type="submit" class="btn btn-primary">{{ t('add') }} {{ t('agent') }}</button>
+        </form>
+    </div>
+</details>
+
+<!-- Agents List -->
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>{{ t('name') }}</th>
+                <th>CLI</th>
+                <th>{{ t('role') }}</th>
+                <th>{{ t('priority') }}</th>
+                <th>{{ t('system_prompt') }}</th>
+                <th>{{ t('active') }}</th>
+                <th>{{ t('created') }}</th>
+                <th>{{ t('actions') }}</th>
+            </tr>
+        </thead>
+        <tbody id="agents-tbody"
+               hx-get="/agents/list"
+               hx-trigger="load, reloadAgentList from:body"
+               hx-indicator="#global-loader"
+               hx-swap="innerHTML">
+            <!-- Row content with data-labels -->
+        </tbody>
+    </table>
+</div>
+
+<script>
+function openAgentModal() {
+    const modal = document.getElementById('agent-modal');
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeAgentModal() {
+    const modal = document.getElementById('agent-modal');
+    modal.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeAgentModal();
+});
+</script>
+{% endblock %}

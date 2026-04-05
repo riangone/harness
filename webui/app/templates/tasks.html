@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('tasks') }} - Multi-AI Harness{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t('tasks') }}</h2>
+</div>
+
+<!-- Add Task Form -->
+<details class="mb-2">
+    <summary>{{ t('add_task') }}</summary>
+    <div class="details-content">
+        <form hx-post="/tasks" hx-target="#tasks-tbody" hx-swap="innerHTML" accept-charset="UTF-8">
+            <div class="form-group">
+                <label for="title">{{ t('title') }}</label>
+                <input type="text" id="title" name="title" required placeholder="e.g. Implement login feature">
+            </div>
+            <div class="form-group">
+                <label for="prompt">{{ t('prompt') }}</label>
+                <textarea id="prompt" name="prompt" required placeholder="Instructions for the AI agent..."></textarea>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="project_id">{{ t('project_optional') }}</label>
+                    <select id="project_id" name="project_id">
+                        <option value="">{{ t('no_project') }}</option>
+                        {% for project in projects %}
+                        <option value="{{ project.id }}">{{ project.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="agent_id">{{ t('agent_optional') }}</label>
+                    <select id="agent_id" name="agent_id">
+                        <option value="">{{ t('auto_select') }}</option>
+                        {% for agent in agents %}
+                        <option value="{{ agent.id }}">{{ agent.name }} ({{ agent.cli_command }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="pipeline_mode"> {{ t('pipeline_mode_desc') }}
+                    </label>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">{{ t('add') }} {{ t('task') }}</button>
+        </form>
+    </div>
+</details>
+
+<!-- Tasks List -->
+<div class="table-wrapper">
+    <table>
+        <thead>
+            <tr>
+                <th>{{ t('title') }}</th>
+                <th>{{ t('project') }}</th>
+                <th>{{ t('agent') }}</th>
+                <th>{{ t('status') }}</th>
+                <th>{{ t('created') }}</th>
+                <th>{{ t('actions') }}</th>
+            </tr>
+        </thead>
+        <tbody id="tasks-tbody"
+               hx-get="/tasks/list"
+               hx-trigger="load, reloadTaskList from:body"
+               hx-swap="innerHTML">
+        </tbody>
+    </table>
+</div>
+{% endblock %}

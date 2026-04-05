@@ -1,0 +1,96 @@
+from fastapi import APIRouter, Request, Depends, HTTPException, Cookie
+from fastapi.responses import HTMLResponse
+from sqlalchemy.orm import Session
+from datetime import datetime
+
+from app.database import get_db, init_db
+from app.models import Run, RunStatus, Task, TaskStatus
+from app.services.executor import TaskExecutor
+from app.templates import templates
+from app.auth import get_current_user
+from app.i18n import get_lang, t as translate
+
+router = APIRouter(prefix="/runs", tags=["runs"])
+
+
+def _ctx(request: Request, lang: str | None, extra: dict = {}) -> dict:
+    lang_code = get_lang(lang)
+    ctx = {'lang': lang_code, 't': lambda key: translate(key, lang_code)}
+    ctx.update(extra)
+    return ctx
+
+
+@router.get("", response_class=HTMLResponse)
+async def runs_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: str = Depends(get_current_user),
+    lang: str | None = Cookie(default=None)
+):
+    init_db()
+    runs = db.query(Run).order_by(Run.started_at.desc()).all()
+    tasks = db.query(Task).order_by(Task.created_at.desc()).all()
+    return templates.TemplateResponse(request, "runs.html", _ctx(request, lang, {
+        "runs": runs, "tasks": tasks
+    }))
+
+
+@router.get("/list", response_class=HTMLResponse)
+async def runs_list(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: str = Depends(get_current_user),
+    lang: str | None = Cookie(default=None)
+):
+    init_db()
+    runs = db.query(Run).order_by(Run.started_at.desc()).all()
+    return templates.TemplateResponse(request, "partials/run_log.html", _ctx(request, lang, {
+        "runs": runs
+    }))
+
+
+@router.get("/{run_id}/log", response_class=HTMLResponse)
+async def run_log(
+    run_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: str = Depends(get_current_user),
+    lang: str | None = Cookie(default=None)
+):
+    init_db()
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return templates.TemplateResponse(request, "partials/run_log_single.html", _ctx(request, lang, {
+        "run": run
+    }))
+
+
+@router.post("/{run_id}/cancel", response_class=HTMLResponse)
+async def cancel_run(
+    run_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: str = Depends(get_current_user),
+    lang: str | None = Cookie(default=None)
+):
+    init_db()
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    TaskExecutor.cancel(run.task_id)
+
+    run.status = RunStatus.failed
+    run.finished_at = datetime.utcnow()
+    run.log = (run.log or "") + "\n[キャンセル] 実行がキャンセルされました。\n"
+    db.commit()
+
+    task = db.query(Task).filter(Task.id == run.task_id).first()
+    if task:
+        task.status = TaskStatus.failed
+        db.commit()
+
+    return templates.TemplateResponse(request, "partials/run_log_single.html", _ctx(request, lang, {
+        "run": run
+    }))
