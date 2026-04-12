@@ -1,10 +1,14 @@
 from fastapi import FastAPI, Request, Cookie, Form, Depends
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import BaseHTTPMiddleware
 from typing import Optional
 import threading
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.database import init_db
 from app.routers import agents, projects, tasks, runs, schedules, users, external_api
@@ -18,6 +22,35 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 app = FastAPI(title="Multi-AI Harness WebUI")
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """422 バリデーションエラーを分かりやすい形式で返す"""
+    missing_fields = []
+    invalid_fields = []
+    for error in exc.errors():
+        loc = error.get("loc", [])
+        field = loc[-1] if loc else "unknown"
+        if error.get("type", "") in ("missing", "value_error.missing"):
+            missing_fields.append(str(field))
+        else:
+            invalid_fields.append({"field": str(field), "message": error.get("msg", "")})
+
+    detail = {"error": "validation_error"}
+    if missing_fields:
+        detail["missing_fields"] = missing_fields
+        detail["message"] = f"必須フィールドが不足しています: {', '.join(missing_fields)}"
+        if "/tasks/from-email" in request.url.path:
+            detail["hint"] = '{"subject": "件名"} が必須です。body/from_addr は省略可能です。'
+        elif "/tasks" in request.url.path:
+            detail["hint"] = 'title か prompt のいずれかを指定してください。'
+    if invalid_fields:
+        detail["invalid_fields"] = invalid_fields
+        detail.setdefault("message", "フィールドの値が不正です")
+
+    logger.warning(f"Validation error [{request.method} {request.url.path}]: {detail}")
+    return JSONResponse(status_code=422, content=detail)
 
 # ============================================
 # 外部 API Token 同步（与 external_api 共享）

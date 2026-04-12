@@ -46,9 +46,14 @@ def verify_api_token(x_api_key: str | None = Header(None)) -> bool:
 # 请求/响应模型
 # ============================================
 class TaskCreateRequest(BaseModel):
-    """创建任务请求"""
-    title: str = Field(..., description="任务标题")
-    prompt: str = Field(..., description="任务提示")
+    """创建任务请求
+
+    注意: title と prompt のどちらか一方があれば足ります。
+    - prompt のみ指定 → title に先頭80文字が使われる
+    - title のみ指定 → prompt に title がコピーされる
+    """
+    title: Optional[str] = Field(None, description="任务标题（省略時は prompt 先頭80文字）")
+    prompt: Optional[str] = Field(None, description="任务提示（省略時は title を使用）")
     success_criteria: Optional[str] = Field(None, description="成功标准")
     pipeline_mode: bool = Field(True, description="是否使用 Pipeline 模式")
     agent_id: Optional[int] = Field(None, description="指定 Agent ID")
@@ -90,10 +95,15 @@ class CallbackPayload(BaseModel):
 
 
 class EmailTaskRequest(BaseModel):
-    """从邮件直接创建任务（MailMindHub 转发邮件内容）"""
-    subject: str = Field(..., description="邮件主题")
-    body: str = Field(..., description="邮件正文")
-    from_addr: str = Field(..., description="发件人地址")
+    """从邮件直接创建任务（MailMindHub 转发邮件内容）
+
+    body と from_addr は省略可能。
+    - body 未指定 → 空文字列として扱い、subject からタスク内容を抽出
+    - from_addr 未指定 → Webhook コールバックの from_addr フィールドが空になる
+    """
+    subject: str = Field(..., description="邮件主题（必须）")
+    body: Optional[str] = Field("", description="邮件正文（省略可、デフォルト空文字）")
+    from_addr: Optional[str] = Field(None, description="发件人地址（省略可）")
     callback_url: Optional[str] = Field(None, description="Webhook 回调地址")
 
 
@@ -269,6 +279,26 @@ async def create_task(
     try:
         init_db()
 
+        # title / prompt の相互補完
+        # どちらか一方でも指定されていれば受け付ける
+        prompt = (req.prompt or "").strip()
+        title = (req.title or "").strip()
+
+        if not prompt and not title:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "validation_error",
+                    "message": "title または prompt のいずれかは必須です",
+                    "hint": "例: {\"title\": \"タスク名\", \"prompt\": \"詳細な指示\"}"
+                }
+            )
+
+        if not prompt:
+            prompt = title          # title だけの場合は prompt として使う
+        if not title:
+            title = prompt[:80]     # prompt だけの場合は先頭80文字をタイトルに
+
         # 构建元数据
         import json
         metadata = req.metadata or {}
@@ -278,8 +308,8 @@ async def create_task(
             metadata['source'] = req.source
 
         task = Task(
-            title=req.title,
-            prompt=req.prompt,
+            title=title,
+            prompt=prompt,
             success_criteria=req.success_criteria or "",
             agent_id=req.agent_id,
             project_id=req.project_id,
@@ -324,12 +354,16 @@ async def create_task_from_email(
     try:
         init_db()
 
+        # body / from_addr は Optional なので None を空文字列に正規化
+        body = req.body or ""
+        from_addr = req.from_addr or ""
+
         # 使用 MailGateway 解析邮件内容
         mail_gateway = MailGateway()
         task_data = mail_gateway.parse_email_to_task(
             subject=req.subject,
-            body=req.body,
-            from_addr=req.from_addr,
+            body=body,
+            from_addr=from_addr,
             callback_url=req.callback_url
         )
 
@@ -342,19 +376,30 @@ async def create_task_from_email(
                 help_sent=True
             )
 
+        # タスクコンテンツが空の場合のガード
+        task_input = (task_data.get('input') or "").strip()
+        if not task_input:
+            task_input = req.subject.strip()
+        if not task_input:
+            return EmailTaskResponse(
+                status="error",
+                message="タスク内容を抽出できませんでした。件名か本文に具体的な指示を記入してください。",
+                help_sent=False
+            )
+
         # 构建元数据
         import json
         metadata = task_data.get('metadata', {})
         if req.callback_url:
             metadata['callback_url'] = req.callback_url
-        metadata['from_addr'] = req.from_addr
+        metadata['from_addr'] = from_addr
         metadata['subject'] = req.subject
         metadata['task_type'] = task_data.get('task_type', 'general')
-        metadata['input'] = task_data['input']
+        metadata['input'] = task_input
 
         task = Task(
-            title=f"[email] {task_data['input'][:80]}",
-            prompt=task_data['input'],
+            title=f"[email] {task_input[:80]}",
+            prompt=task_input,
             success_criteria="",
             pipeline_mode=True,
             status=TaskStatus.pending,

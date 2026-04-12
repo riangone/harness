@@ -23,8 +23,10 @@ import logging
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 # 确保项目根目录在 Python 路径中
 PROJECT_ROOT = Path(__file__).parent.absolute()
@@ -76,6 +78,58 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================
+# カスタム 422 バリデーションエラーハンドラー
+# FastAPI デフォルトの英語エラーを分かりやすい形式に変換
+# ============================================
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Pydantic バリデーションエラーを分かりやすい JSON 形式で返す"""
+    missing_fields = []
+    invalid_fields = []
+
+    for error in exc.errors():
+        loc = error.get("loc", [])
+        field = loc[-1] if loc else "unknown"
+        err_type = error.get("type", "")
+        msg = error.get("msg", "")
+
+        if err_type in ("missing", "value_error.missing"):
+            missing_fields.append(str(field))
+        else:
+            invalid_fields.append({"field": str(field), "message": msg})
+
+    detail = {"error": "validation_error"}
+
+    if missing_fields:
+        detail["missing_fields"] = missing_fields
+        detail["message"] = f"必須フィールドが不足しています: {', '.join(missing_fields)}"
+        detail["hint"] = _get_validation_hint(request.url.path, missing_fields)
+
+    if invalid_fields:
+        detail["invalid_fields"] = invalid_fields
+        if "message" not in detail:
+            detail["message"] = "フィールドの値が不正です"
+
+    logger.warning(f"Validation error on {request.method} {request.url.path}: {detail}")
+    return JSONResponse(status_code=422, content=detail)
+
+
+def _get_validation_hint(path: str, missing_fields: list) -> str:
+    """エンドポイントパスと不足フィールドに基づいてヒントを返す"""
+    if "/tasks/from-email" in path:
+        return (
+            'メールからのタスク作成には {"subject": "件名"} が必須です。'
+            ' body と from_addr は省略可能です。'
+        )
+    if "/tasks" in path and ("title" in missing_fields or "prompt" in missing_fields):
+        return (
+            'タスク作成には title か prompt のいずれかが必要です。'
+            ' 例: {"title": "タスク名"} または {"prompt": "指示内容"}'
+        )
+    return "API ドキュメントを確認してください: /docs"
 
 
 # ============================================
