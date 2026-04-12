@@ -8,7 +8,7 @@ External API — harness HTTP API 層
 
 可独立部署（harness_api.py）或嵌入 WebUI（本文件）。
 """
-from fastapi import APIRouter, Depends, HTTPException, Header, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Header, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
@@ -333,6 +333,8 @@ async def create_task(
             message="任务已创建，正在后台执行"
         )
 
+    except HTTPException:
+        raise  # バリデーションエラー等は素通しする
     except Exception as e:
         logger.error(f"Failed to create task: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
