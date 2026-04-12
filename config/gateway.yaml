@@ -43,17 +43,18 @@ mail:
       pipeline: research
       task_type: research
 
-    # ── 自然语言：文章・執筆 ──────────────────────────────────
-    - pattern: "(?i)(小説|文章|ブログ|記事|エッセイ|手紙|作文|書いて|執筆|コピー|メール文|SNS|ツイート|キャッチコピー|write.*story|compose|draft|essay|blog|novel|story|poem|写作|小说|博客|文案)"
-      action: create_task
-      pipeline: writing
-      task_type: writing
-
-    # ── 自然语言：ドキュメント・資料 ─────────────────────────
-    - pattern: "(?i)(PPT|PowerPoint|スライド|プレゼン|発表資料|PDF|Word|Excel|スプレッドシート|ドキュメント|資料作成|議事録|マニュアル|仕様書|presentation|slides|spreadsheet|幻灯片|演示|文档)"
+    # ── 自然语言：ドキュメント・資料（執筆より先に評価） ────────
+    # 「仕様書を書いて」のように「書いて」を含む表現でも正しく document にマッチさせる
+    - pattern: "(?i)(PPT|PowerPoint|スライド|プレゼン|発表資料|PDF|Word|Excel|スプレッドシート|資料作成|議事録|マニュアル|仕様書|ドキュメント作成|presentation|slides|spreadsheet|幻灯片|演示|文档)"
       action: create_task
       pipeline: document
       task_type: document
+
+    # ── 自然语言：文章・執筆 ──────────────────────────────────
+    - pattern: "(?i)(小説|文章|ブログ|記事|エッセイ|手紙|作文|書いて|執筆|コピーライト|メール文|SNS|ツイート|キャッチコピー|write.*story|compose|draft|essay|blog|novel|story|poem|写作|小说|博客|文案)"
+      action: create_task
+      pipeline: writing
+      task_type: writing
 
     # ── 自然语言：ファイル・フォルダ操作 ─────────────────────
     - pattern: "(?i)(フォルダ.*整理|ファイル.*整理|ディレクトリ|リネーム|一括.*変換|organize.*file|file.*organiz|rename|batch.*convert|文件整理|目录整理)"
