@@ -1,0 +1,42 @@
+# Harness 2.0 - 邮件解析配置
+# 
+# 注意：harness 不负责 SMTP/IMAP 收发邮件
+# 邮件收发由 MailMindHub 负责，harness 只解析邮件内容 → 任务
+
+mail:
+  # 路由规则：匹配邮件内容并转换为任务
+  routing_rules:
+    # 代码审查
+    - pattern: "^(review|/review)\\s+(.+)"
+      action: create_task
+      pipeline: code_review
+      task_type: code_review
+
+    # 代码生成
+    - pattern: "^(generate|/generate|/gen|/g)\\s+(.+)"
+      action: create_task
+      pipeline: code_generation
+      task_type: code_generation
+
+    # Bug修复
+    - pattern: "^(fix|/fix)\\s+(.+)"
+      action: create_task
+      pipeline: bug_fix
+      task_type: bug_fix
+
+    # 帮助
+    - pattern: "^(help|/help|\\?)"
+      action: reply_help
+
+  # 任务完成响应邮件模板（供 MailMindHub 使用）
+  response_template: |
+    ✅ **任务完成**
+
+    **任务**: {{ task_summary }}
+    **耗时**: {{ duration }}秒
+    **状态**: {{ status }}
+
+    **执行步骤**:
+    {{ result_summary }}
+    ---
+    💡 回复此邮件可继续对话

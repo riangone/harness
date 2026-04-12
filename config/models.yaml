@@ -1,0 +1,71 @@
+# Harness 2.0 - 模型配置
+# 定义所有可用的AI模型及其属性
+
+providers:
+  # CLI模式（本地已安装的CLI工具）
+  cli:
+    models:
+      - id: claude
+        roles: [planner, evaluator]
+        cost_per_1k: 0.015
+        quality_score: 0.98
+        context_window: 200000
+        cli_command: claude
+        description: "Claude - 高质量规划和评估"
+
+      - id: qwen
+        roles: [generator, bug_fixer]
+        cost_per_1k: 0.002
+        quality_score: 0.85
+        context_window: 32768
+        cli_command: qwen
+        description: "Qwen - 低成本代码生成"
+
+      - id: gemini
+        roles: [generator, researcher]
+        cost_per_1k: 0.003
+        quality_score: 0.88
+        context_window: 1000000
+        cli_command: gemini
+        description: "Gemini - 大上下文研究和生成"
+
+      - id: codex
+        roles: [generator]
+        cost_per_1k: 0.005
+        quality_score: 0.90
+        context_window: 8192
+        cli_command: codex
+        description: "Codex - 辅助代码生成"
+
+  # API模式（通过OpenRouter等）- 可选
+  # openrouter:
+  #   api_key_env: OPENROUTER_KEY
+  #   base_url: https://openrouter.ai/api/v1
+  #   models:
+  #     - id: qwen/qwen-2.5-coder-32b
+  #       roles: [generator, bug_fixer]
+  #       cost_per_1k: 0.002
+  #       quality_score: 0.85
+  #       context_window: 32768
+  #
+  #     - id: anthropic/claude-3-5-sonnet
+  #       roles: [planner, evaluator]
+  #       cost_per_1k: 0.015
+  #       quality_score: 0.98
+  #       context_window: 200000
+
+# 路由配置
+routing:
+  default_strategy: cost_aware  # cost_aware | quality_first | balanced
+  
+  # Fallback链：当首选不可用时依次尝试
+  fallback_chain:
+    - try: [qwen, gemini]  # 优先生成器
+    - try: [claude]         # 然后Claude
+    - try: [codex]          # 最后Codex
+
+  # 预算规则
+  budget_rules:
+    - role: generator
+      max_cost_per_task: 0.5
+      auto_switch_when: 0.8  # 消耗80%预算时切廉价模型

@@ -124,6 +124,34 @@
       border-bottom: none;
     }
 
+    /* ドラッグ中のスタイル */
+    .todo-item.dragging {
+      opacity: 0.4;
+      background-color: #f0f0f0;
+    }
+
+    /* ドラッグオーバー時の挿入ガイドライン */
+    .todo-item.drag-over-top {
+      border-top: 3px solid #667eea;
+    }
+
+    .todo-item.drag-over-bottom {
+      border-bottom: 3px solid #667eea;
+    }
+
+    /* ドラッグハンドル */
+    .drag-handle {
+      cursor: grab;
+      color: #ccc;
+      font-size: 16px;
+      user-select: none;
+      flex-shrink: 0;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
+    }
+
     .todo-item input[type="checkbox"] {
       width: 20px;
       height: 20px;
@@ -141,6 +169,16 @@
     .todo-item .todo-text.completed {
       text-decoration: line-through;
       color: #aaa;
+    }
+
+    /* インライン編集中のinput */
+    .todo-item .edit-input {
+      flex: 1;
+      padding: 6px 10px;
+      border: 2px solid #667eea;
+      border-radius: 6px;
+      font-size: 16px;
+      outline: none;
     }
 
     .todo-item .delete-btn {
@@ -182,6 +220,55 @@
       font-weight: 600;
       color: #667eea;
     }
+
+    /* 全選択チェックボックス */
+    .select-all-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 0 12px;
+    }
+
+    .select-all-row.hidden {
+      display: none;
+    }
+
+    .select-all-row label {
+      font-size: 14px;
+      color: #666;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .select-all-row input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #667eea;
+    }
+
+    /* 完了クリアボタン */
+    .clear-completed-btn {
+      padding: 6px 14px;
+      background: #fff;
+      color: #667eea;
+      border: 2px solid #667eea;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .clear-completed-btn:hover {
+      background: #667eea;
+      color: #fff;
+    }
+
+    .clear-completed-btn.hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -199,10 +286,17 @@
       <button data-filter="completed">完了済み</button>
     </div>
 
+    <!-- 全選択チェックボックス -->
+    <div class="select-all-row hidden" id="select-all-row">
+      <input type="checkbox" id="select-all-checkbox">
+      <label for="select-all-checkbox">全選択</label>
+    </div>
+
     <ul id="todo-list" class="todo-list"></ul>
 
     <div class="footer">
       <span>未完了: <span class="count" id="pending-count">0</span> 件</span>
+      <button class="clear-completed-btn hidden" id="clear-completed-btn">完了をクリア</button>
     </div>
   </div>
 
@@ -212,12 +306,18 @@
       let todos = [];
       let currentFilter = 'all';
 
+      // ドラッグ＆ドロップ状態
+      let draggedId = null;
+
       // DOM elements
       const todoInput = document.getElementById('todo-input');
       const addBtn = document.getElementById('add-btn');
       const todoList = document.getElementById('todo-list');
       const pendingCount = document.getElementById('pending-count');
       const filterButtons = document.querySelectorAll('.filters button');
+      const selectAllRow = document.getElementById('select-all-row');
+      const selectAllCheckbox = document.getElementById('select-all-checkbox');
+      const clearCompletedBtn = document.getElementById('clear-completed-btn');
 
       // Load todos from LocalStorage
       function loadTodos() {
@@ -262,9 +362,26 @@
           }
           todoList.appendChild(emptyMsg);
         } else {
-          filteredTodos.forEach(function(todo) {
+          filteredTodos.forEach(function(todo, index) {
             const li = document.createElement('li');
             li.className = 'todo-item';
+            li.dataset.id = todo.id;
+
+            // ドラッグハンドル（allフィルター時のみ表示）
+            if (currentFilter === 'all') {
+              const dragHandle = document.createElement('span');
+              dragHandle.className = 'drag-handle';
+              dragHandle.textContent = '\u2630';
+              dragHandle.draggable = true;
+              dragHandle.title = 'ドラッグで並び替え';
+              li.appendChild(dragHandle);
+
+              // Drag & Drop イベント
+              dragHandle.addEventListener('dragstart', handleDragStart);
+              li.addEventListener('dragover', handleDragOver);
+              li.addEventListener('dragleave', handleDragLeave);
+              li.addEventListener('drop', handleDrop);
+            }
 
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
@@ -276,6 +393,13 @@
             const span = document.createElement('span');
             span.className = 'todo-text' + (todo.completed ? ' completed' : '');
             span.textContent = todo.text;
+
+            // ダブルクリックでインライン編集（allフィルター時のみ）
+            if (currentFilter === 'all') {
+              span.addEventListener('dblclick', function() {
+                startInlineEdit(li, todo.id, span, todo.text);
+              });
+            }
 
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-btn';
@@ -292,8 +416,35 @@
         }
 
         // Update pending count
-        const pending = todos.filter(function(todo) { return !todo.completed; }).length;
+        const pending = todos.filter(function(t) { return !t.completed; }).length;
         pendingCount.textContent = pending;
+
+        // 全選択行の表示制御
+        updateSelectAllUI();
+
+        // 完了クリアボタンの表示制御
+        updateClearCompletedBtn();
+      }
+
+      // 全選択UIの更新
+      function updateSelectAllUI() {
+        if (todos.length === 0) {
+          selectAllRow.classList.add('hidden');
+          return;
+        }
+        selectAllRow.classList.remove('hidden');
+        const allCompleted = todos.every(function(t) { return t.completed; });
+        selectAllCheckbox.checked = allCompleted;
+      }
+
+      // 完了クリアボタンの表示制御
+      function updateClearCompletedBtn() {
+        const completedCount = todos.filter(function(t) { return t.completed; }).length;
+        if (completedCount > 0) {
+          clearCompletedBtn.classList.remove('hidden');
+        } else {
+          clearCompletedBtn.classList.add('hidden');
+        }
       }
 
       // Add a new todo
@@ -331,6 +482,159 @@
         saveTodos();
         render();
       }
+
+      // インライン編集
+      function startInlineEdit(li, id, span, originalText) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'edit-input';
+        input.value = originalText;
+
+        // span を input に置換
+        span.style.display = 'none';
+        li.insertBefore(input, span.nextSibling);
+        input.focus();
+        input.select();
+
+        function finishEdit() {
+          const newText = input.value.trim();
+          if (newText === '') {
+            // 空文字で確定 → 削除
+            deleteTodo(id);
+          } else if (newText !== originalText) {
+            // 変更があれば更新
+            todos = todos.map(function(todo) {
+              if (todo.id === id) {
+                return { ...todo, text: newText };
+              }
+              return todo;
+            });
+            saveTodos();
+          }
+          render();
+        }
+
+        function cancelEdit() {
+          render();
+        }
+
+        input.addEventListener('keydown', function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            input.blur(); // blurでfinishEditが呼ばれる
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelEdit();
+          }
+        });
+
+        input.addEventListener('blur', function() {
+          finishEdit();
+        });
+      }
+
+      // ドラッグ＆ドロップ ハンドラ
+      function handleDragStart(e) {
+        const li = e.target.closest('.todo-item');
+        draggedId = parseInt(li.dataset.id, 10);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', draggedId);
+        // 遅延でクラス付与（dragstartの直後だと反映されないため）
+        requestAnimationFrame(function() {
+          li.classList.add('dragging');
+        });
+      }
+
+      function handleDragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+
+        const li = e.currentTarget;
+        // 自分自身は除外
+        if (parseInt(li.dataset.id, 10) === draggedId) return;
+
+        // 挿入位置を判定（上半分か下半分か）
+        const rect = li.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+
+        // 他のガイドラインをクリア
+        document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(function(el) {
+          el.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+
+        if (e.clientY < midY) {
+          li.classList.add('drag-over-top');
+        } else {
+          li.classList.add('drag-over-bottom');
+        }
+      }
+
+      function handleDragLeave(e) {
+        const li = e.currentTarget;
+        li.classList.remove('drag-over-top', 'drag-over-bottom');
+      }
+
+      function handleDrop(e) {
+        e.preventDefault();
+        const li = e.currentTarget;
+        li.classList.remove('drag-over-top', 'drag-over-bottom');
+
+        const targetId = parseInt(li.dataset.id, 10);
+        if (draggedId === null || draggedId === targetId) return;
+
+        // 挿入位置を判定
+        const rect = li.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        const insertBefore = e.clientY < midY;
+
+        // 配列上のインデックスを取得
+        const draggedIndex = todos.findIndex(function(t) { return t.id === draggedId; });
+        const targetIndex = todos.findIndex(function(t) { return t.id === targetId; });
+
+        if (draggedIndex === -1 || targetIndex === -1) return;
+
+        // 配列から一旦取り除く
+        var movedItem = todos.splice(draggedIndex, 1)[0];
+
+        // 新しいインデックスを再計算（spliceでずれるため）
+        var newTargetIndex = todos.findIndex(function(t) { return t.id === targetId; });
+        var insertIndex = insertBefore ? newTargetIndex : newTargetIndex + 1;
+
+        // 挿入
+        todos.splice(insertIndex, 0, movedItem);
+
+        draggedId = null;
+        saveTodos();
+        render();
+      }
+
+      // ドラッグ終了時のクリーンアップ
+      document.addEventListener('dragend', function() {
+        document.querySelectorAll('.dragging').forEach(function(el) {
+          el.classList.remove('dragging');
+        });
+        document.querySelectorAll('.drag-over-top, .drag-over-bottom').forEach(function(el) {
+          el.classList.remove('drag-over-top', 'drag-over-bottom');
+        });
+        draggedId = null;
+      });
+
+      // 全選択チェックボックスのイベント
+      selectAllCheckbox.addEventListener('change', function() {
+        var checked = selectAllCheckbox.checked;
+        todos = todos.map(function(todo) {
+          return { ...todo, completed: checked };
+        });
+        saveTodos();
+        render();
+      });
+
+      // 完了クリアボタンのイベント
+      clearCompletedBtn.addEventListener('click', function() {
+        todos = todos.filter(function(todo) { return !todo.completed; });
+        saveTodos();
+        render();
+      });
 
       // Event listeners
       addBtn.addEventListener('click', addTodo);

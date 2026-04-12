@@ -71,6 +71,9 @@ class Task(Base):
     pipeline_mode = Column(Boolean, nullable=False, default=False)
     parallel_group = Column(String(100), nullable=True, default=None)  # 並列実行グループ
     status = Column(Enum(TaskStatus), nullable=False, default=TaskStatus.pending)
+    source = Column(String(50), nullable=True, default="webui")  # 任务来源: webui/api/email
+    result = Column(Text, nullable=True, default="")  # 任务执行结果
+    task_meta = Column("metadata", Text, nullable=True, default=None)  # JSON 元数据（callback_url, from_addr 等）
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

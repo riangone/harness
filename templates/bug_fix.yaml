@@ -1,0 +1,67 @@
+# Bug修复Pipeline
+# 用于自动Bug分析和修复
+
+name: bug_fix
+version: 1
+description: Bug分析 → 定位原因 → 生成修复
+
+trigger:
+  task_type: bug_fix
+  auto_apply: false
+  patterns:
+    - "fix"
+    - "bug"
+    - "/fix"
+
+steps:
+  - id: analyze
+    agent:
+      role: researcher
+      model_selector:
+        strategy: quality_first
+    action: analyze_bug_report
+    output_key: analysis
+    max_retries: 1
+
+  - id: locate
+    agent:
+      role: researcher
+      model_selector:
+        strategy: balanced
+    action: locate_root_cause
+    output_key: root_cause
+    max_retries: 1
+
+  - id: fix
+    agent:
+      role: bug_fixer
+      model_selector:
+        strategy: balanced
+    action: generate_fix
+    output_key: fix
+    max_retries: 2
+
+  - id: verify
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality_first
+    action: verify_fix
+    condition: "{{ steps.fix.success }}"
+    output_key: verification
+    max_retries: 1
+
+on_success:
+  - action: store_experience
+  - action: notify
+    channels: [email]
+
+on_failure:
+  - action: store_experience
+  - action: notify
+    channels: [email]
+    include_error: true
+
+metadata:
+  critical_steps: [analyze, fix]
+  estimated_cost: 0.04

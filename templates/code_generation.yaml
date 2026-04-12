@@ -1,0 +1,71 @@
+# 代码生成Pipeline
+# 用于自动生成代码任务
+
+name: code_generation
+version: 1
+description: 代码生成 → 自动验证
+
+trigger:
+  task_type: code_generation
+  auto_apply: false
+  patterns:
+    - "generate"
+    - "create"
+    - "implement"
+    - "/gen"
+    - "/generate"
+
+steps:
+  - id: plan
+    agent:
+      role: planner
+      model_selector:
+        strategy: quality_first
+    action: create_implementation_plan
+    output_key: plan
+    max_retries: 1
+
+  - id: generate
+    agent:
+      role: generator
+      model_selector:
+        strategy: cost_aware
+        budget: 0.01
+    action: generate_code
+    output_key: code
+    max_retries: 2
+
+  - id: validate
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality_first
+    action: validate_code_quality
+    condition: "{{ steps.generate.success }}"
+    output_key: validation
+    max_retries: 1
+
+  - id: conditional_fix
+    agent:
+      role: bug_fixer
+      model_selector:
+        strategy: balanced
+    action: fix_validation_issues
+    condition: "{{ steps.validate.output.issues|length > 0 }}"
+    output_key: fixed_code
+    max_retries: 1
+
+on_success:
+  - action: store_experience
+  - action: notify
+    channels: [email]
+
+on_failure:
+  - action: store_experience
+  - action: notify
+    channels: [email]
+    include_error: true
+
+metadata:
+  critical_steps: [generate]
+  estimated_cost: 0.05

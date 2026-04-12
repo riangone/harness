@@ -7,7 +7,7 @@ import threading
 import time
 
 from app.database import init_db
-from app.routers import agents, projects, tasks, runs, schedules, users
+from app.routers import agents, projects, tasks, runs, schedules, users, external_api
 from app.templates import templates
 from app.auth import HARNESS_USER, HARNESS_PASSWORD, create_session_token, get_current_user, authenticate_user
 from app.i18n import get_lang, t as translate
@@ -18,6 +18,17 @@ import os
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 app = FastAPI(title="Multi-AI Harness WebUI")
+
+# ============================================
+# 外部 API Token 同步（与 external_api 共享）
+# ============================================
+# 确保 WebUI 启动时 external_api 的 HARNESS_API_TOKEN 被加载
+try:
+    _token = os.environ.get("HARNESS_API_TOKEN", "")
+    if _token:
+        external_api.HARNESS_API_TOKEN = _token
+except Exception:
+    pass
 
 
 class UTF8Middleware(BaseHTTPMiddleware):
@@ -66,6 +77,7 @@ app.include_router(tasks.router)
 app.include_router(runs.router)
 app.include_router(schedules.router)
 app.include_router(users.router)
+app.include_router(external_api.router)
 
 
 @app.get("/favicon.ico")

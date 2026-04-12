@@ -1,0 +1,27 @@
+# 默认Pipeline模板
+# 当没有匹配到特定模板时使用
+
+name: default_pipeline
+version: 1
+description: 默认单步执行Pipeline
+
+trigger:
+  task_type: default
+  auto_apply: true
+
+steps:
+  - id: execute
+    agent:
+      role: generator
+      model_selector:
+        strategy: balanced
+    action: execute_task
+    output_key: result
+
+on_success:
+  - action: log
+    message: "Task completed successfully"
+
+on_failure:
+  - action: log
+    message: "Task failed, check logs for details"

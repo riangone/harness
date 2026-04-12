@@ -1,0 +1,75 @@
+# 代码审查Pipeline
+# 用于自动代码审查和修复
+
+name: code_review
+version: 1
+description: 代码审查 → 问题反馈 → 自动修复
+
+trigger:
+  task_type: code_review
+  auto_apply: false
+  patterns:
+    - "review"
+    - "/review"
+
+steps:
+  - id: review
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality_first
+    action: review_code
+    output_key: review_report
+    max_retries: 1
+
+  - id: check_issues
+    condition: "{{ steps.review.output.issues|length > 0 }}"
+    # 仅作为条件检查，不执行操作
+
+  - id: suggest_fixes
+    agent:
+      role: bug_fixer
+      model_selector:
+        strategy: balanced
+    action: suggest_fixes
+    condition: "{{ steps.review.output.issues|length > 0 }}"
+    input:
+      source: "steps.review.output.issues"
+    output_key: fixes
+    max_retries: 1
+
+  - id: apply_fixes
+    agent:
+      role: generator
+      model_selector:
+        strategy: cost_aware
+    action: apply_suggested_fixes
+    condition: "{{ steps.suggest_fixes.success }}"
+    output_key: fixed_code
+    max_retries: 1
+
+  - id: final_review
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality_first
+    action: final_review
+    condition: "{{ steps.apply_fixes.success }}"
+    output_key: final_report
+    max_retries: 1
+
+on_success:
+  - action: store_experience
+  - action: notify
+    channels: [email]
+    include_report: true
+
+on_failure:
+  - action: store_experience
+  - action: notify
+    channels: [email]
+    include_error: true
+
+metadata:
+  critical_steps: [review]
+  estimated_cost: 0.03

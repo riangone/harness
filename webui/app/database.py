@@ -171,6 +171,7 @@ def seed_admin_user():
     """デフォルト admin ユーザーを作成（環境変数ベースの認証と互換）"""
     import sqlite3
     import hashlib
+    from datetime import datetime
     from app.auth import HARNESS_USER, HARNESS_PASSWORD
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -180,8 +181,8 @@ def seed_admin_user():
             return
         password_hash = hashlib.sha256(HARNESS_PASSWORD.encode()).hexdigest()
         cursor.execute(
-            "INSERT INTO users (username, password_hash, role, is_active) VALUES (?, ?, 'admin', 1)",
-            (HARNESS_USER, password_hash)
+            "INSERT INTO users (username, password_hash, role, is_active, created_at) VALUES (?, ?, 'admin', 1, ?)",
+            (HARNESS_USER, password_hash, datetime.utcnow().isoformat())
         )
         conn.commit()
     finally:

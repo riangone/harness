@@ -1,0 +1,31 @@
+# Harness 2.0 - 记忆系统配置
+
+memory:
+  # 存储后端
+  store: sqlite
+  database: data/memory.db
+
+  # 短期记忆（会话级）
+  short_term:
+    max_tokens: 8000
+    compression:
+      enabled: true
+      trigger_ratio: 0.8  # 使用率达80%时触发压缩
+      model_strategy: cost_aware  # 用低成本模型做压缩
+
+  # 长期记忆（持久化）
+  long_term:
+    index_fields: [task_type, agent_role, outcome, tags]
+    retention_days: 90  # 保留90天
+    similarity_threshold: 0.7
+
+  # 自动学习
+  learning:
+    enabled: true
+    patterns:
+      - trigger: task_failed
+        action: extract_lesson
+        store_as: failure_pattern
+      - trigger: task_succeeded
+        action: extract_workflow
+        store_as: success_template

@@ -549,6 +549,13 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
 
     # Phase 2: Generation + Evaluation loop (最大3回)
     generators = _get_agents_by_role_all(db, "generator")
+    # Prefer qwen generator when available
+    try:
+        qwen_agent = next((a for a in generators if a.cli_command == "qwen"), None)
+        if qwen_agent:
+            generators = [qwen_agent] + [a for a in generators if a.id != qwen_agent.id]
+    except Exception:
+        pass
     if not generators:
         qwen = _fallback_agent(db, "qwen")
         if qwen:
