@@ -1,10 +1,17 @@
-<div id="run-log-{{ run.id }}"
-     {% if run.status.value == 'running' %}
-     hx-get="/runs/{{ run.id }}/log"
-     hx-trigger="every 2s"
-     hx-swap="outerHTML"
-     {% endif %}>
-    <div class="log-block">{{ run.log or t('no_log_yet') }}</div>
+<div id="run-log-{{ run.id }}" data-run-id="{{ run.id }}" data-status="{{ run.status.value }}">
+    <div class="log-toolbar">
+        <span class="badge badge-{{ run.status.value }}">{{ run.status.value }}</span>
+        {% if run.status.value == 'running' %}
+        <span class="text-muted" style="font-size:0.8rem;">{{ t('running') }}...</span>
+        {% elif run.finished_at %}
+        <span class="text-muted" style="font-size:0.8rem;">
+            {{ ((run.finished_at - run.started_at).total_seconds() | int) }}s
+        </span>
+        {% endif %}
+        <button class="btn btn-sm" style="margin-left:auto;border:1px solid var(--color-border);font-size:0.75rem;"
+                onclick="scrollLogBottom('log-content-{{ run.id }}')">↓ {{ t('log') }}</button>
+    </div>
+    <div class="log-block log-md-content" id="log-content-{{ run.id }}"></div>
     {% if run.status.value == 'running' %}
     <button class="btn btn-sm btn-danger mt-1"
             hx-post="/runs/{{ run.id }}/cancel"
@@ -12,3 +19,91 @@
             hx-swap="outerHTML">{{ t('cancel') }}</button>
     {% endif %}
 </div>
+
+<script>
+(function() {
+    var runId = '{{ run.id }}';
+    var logEl = document.getElementById('log-content-' + runId);
+    var containerEl = document.getElementById('run-log-' + runId);
+    var status = '{{ run.status.value }}';
+    var eventSource = null;
+
+    // Configure marked for dark theme code blocks
+    marked.setOptions({
+        breaks: true,
+        gfm: true
+    });
+
+    function scrollBottom() {
+        if (logEl) {
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+    }
+
+    function renderMarkdown(text) {
+        if (!text || text.trim() === '') {
+            logEl.innerHTML = '<span style="color:var(--color-text-muted);">{{ t("no_log_yet") }}</span>';
+            return;
+        }
+        try {
+            logEl.innerHTML = marked.parse(text);
+        } catch (e) {
+            logEl.textContent = text;
+        }
+        scrollBottom();
+    }
+
+    if (status === 'running') {
+        // Use SSE for real-time updates
+        eventSource = new EventSource('/runs/' + runId + '/log-stream');
+
+        eventSource.onmessage = function(event) {
+            renderMarkdown(event.data);
+        };
+
+        eventSource.onerror = function() {
+            // Connection closed or error, fallback to polling
+            eventSource.close();
+            pollLog();
+        };
+
+        // Initial scroll
+        setTimeout(scrollBottom, 100);
+    } else {
+        // For completed/failed runs, load once and render
+        fetch('/runs/' + runId + '/log-raw')
+            .then(function(r) { return r.text(); })
+            .then(function(text) { renderMarkdown(text); });
+    }
+
+    function pollLog() {
+        var interval = setInterval(function() {
+            fetch('/runs/' + runId + '/log-raw')
+                .then(function(r) { return r.text(); })
+                .then(function(text) {
+                    renderMarkdown(text);
+                    // Check if run is no longer running, stop polling
+                    var wrapper = document.getElementById('run-log-' + runId);
+                    if (wrapper && wrapper.getAttribute('data-status') !== 'running') {
+                        clearInterval(interval);
+                    }
+                });
+        }, 2000);
+    }
+
+    // Cleanup on removal
+    var observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.removedNodes) {
+                for (var i = 0; i < mutation.removedNodes.length; i++) {
+                    if (mutation.removedNodes[i] === containerEl || containerEl.contains(mutation.removedNodes[i])) {
+                        if (eventSource) eventSource.close();
+                        observer.disconnect();
+                    }
+                }
+            }
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+})();
+</script>

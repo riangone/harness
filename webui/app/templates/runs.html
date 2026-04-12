@@ -3,6 +3,19 @@
 {% block title %}{{ t('runs') }} - Multi-AI Harness{% endblock %}
 
 {% block content %}
+<!-- Log Modal -->
+<div id="log-modal" class="modal-overlay" onclick="if(event.target===this)closeLogModal()">
+    <div class="modal-box" style="max-width:900px;">
+        <div class="modal-header">
+            <h3 id="log-modal-title">{{ t('log') }}</h3>
+            <button onclick="closeLogModal()" class="modal-close-btn" aria-label="Close">✕</button>
+        </div>
+        <div id="log-modal-body" style="padding:1.5rem;">
+            <!-- HTMX will load log here -->
+        </div>
+    </div>
+</div>
+
 <div class="page-header">
     <h2>{{ t('runs') }}</h2>
 </div>
@@ -13,4 +26,32 @@
      hx-trigger="load, every 3s, reloadRunList from:body"
      hx-swap="innerHTML">
 </div>
+
+<script>
+function scrollLogBottom(id) {
+    var el = document.getElementById(id);
+    if (el) el.scrollTop = el.scrollHeight;
+}
+
+function openLogModal(runId, isRunning) {
+    document.getElementById('log-modal-title').textContent = 'Run #' + runId;
+    const body = document.getElementById('log-modal-body');
+    // Load initial content
+    htmx.ajax('GET', '/runs/' + runId + '/log', {target: '#log-modal-body', swap: 'innerHTML'});
+    document.getElementById('log-modal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLogModal() {
+    const modal = document.getElementById('log-modal');
+    modal.classList.remove('active');
+    document.body.style.overflow = '';
+    // Clear content to stop polling
+    document.getElementById('log-modal-body').innerHTML = '';
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLogModal();
+});
+</script>
 {% endblock %}

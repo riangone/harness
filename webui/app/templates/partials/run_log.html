@@ -7,6 +7,8 @@
                 <th>{{ t('task') }}</th>
                 <th>{{ t('agent') }}</th>
                 <th>{{ t('phase') }}</th>
+                <th>Attempt</th>
+                <th>Verdict</th>
                 <th>{{ t('status') }}</th>
                 <th>{{ t('started') }}</th>
                 <th>{{ t('duration') }}</th>
@@ -15,38 +17,58 @@
         </thead>
         <tbody>
             {% for run in runs %}
+            {% set task_obj = tasks.get(run.task_id) if tasks else None %}
+            {% set agent_obj = agents.get(run.agent_id) if agents else None %}
             <tr>
-                <td>#{{ run.id }}</td>
-                <td>{{ t('task') }} #{{ run.task_id }}</td>
-                <td>{{ t('agent') }} #{{ run.agent_id }}</td>
-                <td>{{ run.phase }}</td>
-                <td><span class="badge badge-{{ run.status.value }}">{{ run.status.value }}</span></td>
-                <td class="text-muted">{{ run.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                <td class="text-muted">
+                <td data-label="ID">#{{ run.id }}</td>
+                <td data-label="{{ t('task') }}">
+                    {% if task_obj %}
+                        <span title="#{{ run.task_id }}">{{ task_obj.title }}</span>
+                    {% else %}
+                        #{{ run.task_id }}
+                    {% endif %}
+                </td>
+                <td data-label="{{ t('agent') }}">
+                    {% if agent_obj %}
+                        <span class="text-muted" title="{{ agent_obj.cli_command }}">{{ agent_obj.name }}</span>
+                    {% else %}
+                        #{{ run.agent_id }}
+                    {% endif %}
+                </td>
+                <td data-label="{{ t('phase') }}">
+                    <span class="phase-badge">{{ run.phase }}</span>
+                </td>
+                <td data-label="Attempt">
+                    <span class="attempt-badge">{{ run.attempt or 1 }}</span>
+                </td>
+                <td data-label="Verdict">
+                    {% if run.eval_verdict %}
+                        <span class="verdict-badge verdict-{{ run.eval_verdict }}">{{ run.eval_verdict }}</span>
+                    {% else %}
+                        <span class="text-muted">—</span>
+                    {% endif %}
+                </td>
+                <td data-label="{{ t('status') }}"><span class="badge badge-{{ run.status.value }}">{{ run.status.value }}</span></td>
+                <td class="text-muted" data-label="{{ t('started') }}">{{ run.started_at.strftime('%m-%d %H:%M:%S') }}</td>
+                <td class="text-muted" data-label="{{ t('duration') }}">
                     {% if run.finished_at %}
                         {{ ((run.finished_at - run.started_at).total_seconds() | int) }}s
                     {% else %}
-                        {{ t('running') }}...
+                        <span class="text-running">{{ t('running') }}...</span>
                     {% endif %}
                 </td>
-                <td class="actions-cell">
-                    <details>
-                        <summary class="btn btn-sm">{{ t('log') }}</summary>
-                        <div class="details-content">
-                            <div id="run-log-{{ run.id }}"
-                                 hx-get="/runs/{{ run.id }}/log"
-                                 hx-trigger="{% if run.status.value == 'running' %}every 2s{% else %}load{% endif %}"
-                                 hx-swap="outerHTML">
-                                <div class="log-block">{{ run.log or t('no_log_yet') }}</div>
-                            </div>
-                            {% if run.status.value == 'running' %}
-                            <button class="btn btn-sm btn-danger mt-1"
-                                    hx-post="/runs/{{ run.id }}/cancel"
-                                    hx-target="#run-log-{{ run.id }}"
-                                    hx-swap="outerHTML">{{ t('cancel') }}</button>
-                            {% endif %}
-                        </div>
-                    </details>
+                <td class="actions-cell" data-label="{{ t('actions') }}">
+                    <button class="btn btn-sm"
+                            style="border:1px solid var(--color-border);"
+                            onclick="openLogModal({{ run.id }}, {{ 'true' if run.status.value == 'running' else 'false' }})">
+                        {{ t('view_log') }}
+                    </button>
+                    {% if run.status.value == 'running' %}
+                    <button class="btn btn-sm btn-danger"
+                            hx-post="/runs/{{ run.id }}/cancel"
+                            hx-target="closest tr"
+                            hx-swap="outerHTML">{{ t('cancel') }}</button>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}

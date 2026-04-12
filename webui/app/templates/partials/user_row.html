@@ -1,0 +1,43 @@
+<!-- User Row Partial -->
+{% for u in users %}
+<tr id="user-{{ u.id }}">
+    <td>{{ u.username }}</td>
+    <td>
+        <select hx-put="/users/{{ u.id }}/role"
+                hx-trigger="change"
+                hx-target="#users-list"
+                hx-swap="outerHTML"
+                name="role"
+                {% if not can_admin %}disabled{% endif %}>
+            <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>{{ t('role_admin') }}</option>
+            <option value="editor" {% if u.role == 'editor' %}selected{% endif %}>{{ t('role_editor') }}</option>
+            <option value="viewer" {% if u.role == 'viewer' %}selected{% endif %}>{{ t('role_viewer') }}</option>
+        </select>
+    </td>
+    <td>
+        <span class="badge {% if u.is_active %}badge-completed{% else %}badge-failed{% endif %}">
+            {% if u.is_active %}{{ t('active') }}{% else %}{{ t('failed') }}{% endif %}
+        </span>
+    </td>
+    <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
+    <td>{{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else '-' }}</td>
+    <td>
+        {% if can_admin %}
+        <button class="btn btn-sm"
+                hx-post="/users/{{ u.id }}/toggle"
+                hx-target="#users-list"
+                hx-swap="outerHTML">
+            {% if u.is_active %}{{ t('cancel') }}{% else %}{{ t('run') }}{% endif %}
+        </button>
+        <button class="btn btn-sm btn-danger"
+                hx-delete="/users/{{ u.id }}"
+                hx-target="#users-list"
+                hx-swap="outerHTML"
+                hx-confirm="{{ t('are_you_sure') }}">{{ t('delete') }}</button>
+        {% endif %}
+    </td>
+</tr>
+{% endfor %}
+{% if not users %}
+<tr><td colspan="6" class="text-muted">{{ t('no_data') }}</td></tr>
+{% endif %}

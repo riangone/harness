@@ -6,7 +6,7 @@ from typing import Optional
 from app.database import get_db, init_db
 from app.models import Agent, AgentRole
 from app.templates import templates
-from app.auth import get_current_user
+from app.auth import get_current_user, can_admin
 from app.i18n import get_lang, t as translate
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -23,24 +23,43 @@ def _ctx(request: Request, lang: str | None, extra: dict = {}) -> dict:
 async def agents_page(
     request: Request,
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user=Depends(get_current_user),
     lang: str | None = Cookie(default=None)
 ):
     init_db()
-    agents = db.query(Agent).order_by(Agent.created_at.desc()).all()
-    return templates.TemplateResponse(request, "agents.html", _ctx(request, lang, {"agents": agents}))
+    agents = db.query(Agent).order_by(Agent.priority.asc()).all()
+    return templates.TemplateResponse(request, "agents.html", _ctx(request, lang, {
+        "agents": agents, "can_admin": can_admin(user), "user": user
+    }))
 
 
 @router.get("/list", response_class=HTMLResponse)
 async def agents_list(
     request: Request,
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user=Depends(get_current_user),
     lang: str | None = Cookie(default=None)
 ):
     init_db()
-    agents = db.query(Agent).order_by(Agent.created_at.desc()).all()
-    return templates.TemplateResponse(request, "partials/agent_row.html", _ctx(request, lang, {"agents": agents}))
+    agents = db.query(Agent).order_by(Agent.priority.asc()).all()
+    return templates.TemplateResponse(request, "partials/agent_row.html", _ctx(request, lang, {
+        "agents": agents, "can_admin": can_admin(user), "user": user
+    }))
+
+
+@router.get("/stats", response_class=HTMLResponse)
+async def agents_stats(
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    lang: str | None = Cookie(default=None)
+):
+    """エージェントの実行統計を表示"""
+    init_db()
+    agents = db.query(Agent).order_by(Agent.total_runs.desc()).all()
+    return templates.TemplateResponse(request, "partials/agent_stats.html", _ctx(request, lang, {
+        "agents": agents
+    }))
 
 
 @router.post("", response_class=HTMLResponse)
@@ -53,7 +72,7 @@ async def create_agent(
     priority: int = Form(10),
     is_active: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user=Depends(get_current_user),
     lang: str | None = Cookie(default=None)
 ):
     init_db()
@@ -74,8 +93,10 @@ async def create_agent(
     db.commit()
     db.refresh(agent)
 
-    agents = db.query(Agent).order_by(Agent.created_at.desc()).all()
-    return templates.TemplateResponse(request, "partials/agent_row.html", _ctx(request, lang, {"agents": agents}))
+    agents = db.query(Agent).order_by(Agent.priority.asc()).all()
+    return templates.TemplateResponse(request, "partials/agent_row.html", _ctx(request, lang, {
+        "agents": agents, "can_admin": can_admin(user), "user": user
+    }))
 
 
 @router.get("/{agent_id}/edit", response_class=HTMLResponse)
@@ -83,13 +104,15 @@ async def edit_agent_form(
     agent_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user=Depends(get_current_user),
     lang: str | None = Cookie(default=None)
 ):
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return templates.TemplateResponse(request, "partials/agent_edit_form.html", _ctx(request, lang, {"agent": agent}))
+    return templates.TemplateResponse(request, "partials/agent_edit_form.html", _ctx(request, lang, {
+        "agent": agent
+    }))
 
 
 @router.put("/{agent_id}", response_class=HTMLResponse)
@@ -103,7 +126,7 @@ async def update_agent(
     priority: int = Form(10),
     is_active: Optional[str] = Form(None),
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user),
+    user=Depends(get_current_user),
     lang: str | None = Cookie(default=None)
 ):
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
@@ -124,16 +147,21 @@ async def update_agent(
     db.commit()
     db.refresh(agent)
 
-    agents = db.query(Agent).order_by(Agent.created_at.desc()).all()
-    return templates.TemplateResponse(request, "partials/agent_row.html", _ctx(request, lang, {"agents": agents}))
+    agents = db.query(Agent).order_by(Agent.priority.asc()).all()
+    return templates.TemplateResponse(request, "partials/agent_row.html", _ctx(request, lang, {
+        "agents": agents, "can_admin": can_admin(user), "user": user
+    }))
 
 
 @router.delete("/{agent_id}")
 async def delete_agent(
     agent_id: int,
     db: Session = Depends(get_db),
-    user: str = Depends(get_current_user)
+    user=Depends(get_current_user)
 ):
+    if not can_admin(user):
+        raise HTTPException(status_code=403, detail="権限が不足しています")
+
     agent = db.query(Agent).filter(Agent.id == agent_id).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -141,3 +169,28 @@ async def delete_agent(
     db.delete(agent)
     db.commit()
     return HTMLResponse(content="")
+
+
+@router.post("/{agent_id}/reset-stats", response_class=HTMLResponse)
+async def reset_agent_stats(
+    agent_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+    lang: str | None = Cookie(default=None)
+):
+    """エージェントの統計をリセット"""
+    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    agent.total_runs = 0
+    agent.total_passes = 0
+    agent.avg_duration_ms = 0
+    agent.estimated_cost = 0
+    db.commit()
+
+    agents = db.query(Agent).order_by(Agent.priority.asc()).all()
+    return templates.TemplateResponse(request, "partials/agent_row.html", _ctx(request, lang, {
+        "agents": agents, "can_admin": can_admin(user), "user": user
+    }))

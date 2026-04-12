@@ -8,6 +8,13 @@
         <span class="truncate">{{ (agent.system_prompt or '')[:50] }}{% if agent.system_prompt and agent.system_prompt|length > 50 %}...{% endif %}</span>
     </td>
     <td data-label="{{ t('active') }}">{% if agent.is_active %}<span class="text-success">{{ t('active') }}</span>{% else %}<span class="text-muted">-</span>{% endif %}</td>
+    <td data-label="{{ t('health_check') }}">
+        {% if agent.cli_command in ['claude', 'qwen', 'gemini', 'codex'] %}
+        <span class="badge badge-completed">{{ t('health_ok') }}</span>
+        {% else %}
+        <span class="badge badge-failed">{{ t('health_fail') }}</span>
+        {% endif %}
+    </td>
     <td data-label="{{ t('created') }}" class="text-muted">{{ agent.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
     <td data-label="{{ t('actions') }}" class="actions-cell">
         <button class="btn btn-sm"
@@ -16,11 +23,16 @@
                 hx-swap="innerHTML"
                 hx-indicator="#global-loader"
                 hx-on::after-request="openAgentModal()">{{ t('edit') }}</button>
+        {% if can_admin %}
         <button class="btn btn-sm btn-danger"
                 hx-delete="/agents/{{ agent.id }}"
                 hx-target="#agent-row-{{ agent.id }}"
                 hx-swap="outerHTML swap:0.5s"
                 hx-confirm="{{ t('are_you_sure') }}">{{ t('delete') }}</button>
+        {% endif %}
     </td>
 </tr>
 {% endfor %}
+{% if not agents %}
+<tr><td colspan="9" class="text-muted">{{ t('no_data') }}</td></tr>
+{% endif %}

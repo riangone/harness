@@ -22,8 +22,20 @@
         <div class="value">{{ tasks_count }}</div>
     </div>
     <div class="stat-card">
+        <h3>{{ t('schedules') }}</h3>
+        <div class="value">{{ schedules_count }}</div>
+    </div>
+    <div class="stat-card">
         <h3>{{ t('recent_runs') }}</h3>
         <div class="value">{{ recent_runs|length }}</div>
+    </div>
+</div>
+
+<!-- Welcome -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h3>Welcome, {{ user.username }}!</h3>
+        <span class="badge badge-running">{{ t('role_' + user.role) }}</span>
     </div>
 </div>
 

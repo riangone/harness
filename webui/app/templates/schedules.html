@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('schedules') }} - Multi-AI Harness{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t('schedules') }}</h2>
+</div>
+
+<!-- Add Schedule Form -->
+<details class="mb-3">
+    <summary>{{ t('add_schedule') }}</summary>
+    <div class="details-content">
+        <form hx-post="/schedules" hx-target="#schedules-list" hx-swap="outerHTML" accept-charset="UTF-8">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="task_id">{{ t('task') }}</label>
+                    <select id="task_id" name="task_id" required>
+                        <option value="">-- {{ t('task') }} --</option>
+                        {% for task in tasks %}
+                        <option value="{{ task.id }}">{{ task.title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="cron_expression">{{ t('cron_expression') }}</label>
+                    <input type="text" id="cron_expression" name="cron_expression" required
+                           placeholder="*/30 9-18 * * 1-5"
+                           title="{{ t('cron_format') }}">
+                    <small class="text-muted">{{ t('cron_example') }}</small>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="is_active" checked>
+                        {{ t('schedule_active') }}
+                    </label>
+                </div>
+            </div>
+            <button type="submit" class="btn">{{ t('add') }}</button>
+        </form>
+    </div>
+</details>
+
+<div id="schedules-list" hx-get="/schedules/list" hx-trigger="load, reloadSchedules from:body">
+    {% for schedule in schedules %}
+    <div id="schedule-{{ schedule.id }}" class="card mb-2">
+        <div class="card-header">
+            <span class="badge {% if schedule.is_active %}badge-completed{% else %}badge-failed{% endif %}">
+                {% if schedule.is_active %}{{ t('schedule_active') }}{% else %}{{ t('schedule_inactive') }}{% endif %}
+            </span>
+            <strong>{{ schedule.task.title if schedule.task else 'N/A' }}</strong>
+            <code>{{ schedule.cron_expression }}</code>
+        </div>
+        <div class="card-body">
+            <div class="meta-info">
+                <span>{{ t('next_run') }}: {{ schedule.next_run_at.strftime('%Y-%m-%d %H:%M') if schedule.next_run_at else '-' }}</span>
+                <span>{{ t('last_run') }}: {{ schedule.last_run_at.strftime('%Y-%m-%d %H:%M') if schedule.last_run_at else '-' }}</span>
+            </div>
+            <div class="actions-row">
+                {% if can_edit %}
+                <button class="btn btn-sm"
+                        hx-post="/schedules/{{ schedule.id }}/toggle"
+                        hx-target="#schedules-list"
+                        hx-swap="outerHTML">
+                    {% if schedule.is_active %}{{ t('cancel') }}{% else %}{{ t('run') }}{% endif %}
+                </button>
+                <button class="btn btn-sm btn-danger"
+                        hx-delete="/schedules/{{ schedule.id }}"
+                        hx-target="#schedules-list"
+                        hx-swap="outerHTML"
+                        hx-confirm="{{ t('are_you_sure') }}">{{ t('delete') }}</button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% if not schedules %}
+    <div class="text-muted">{{ t('no_data') }}</div>
+    {% endif %}
+</div>
+{% endblock %}

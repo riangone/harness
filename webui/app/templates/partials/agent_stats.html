@@ -1,0 +1,59 @@
+<!-- Agent Stats Partial -->
+<div class="stats-section">
+    <h3>{{ t('statistics') }}</h3>
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>{{ t('name') }}</th>
+                    <th>{{ t('role') }}</th>
+                    <th>{{ t('total_runs') }}</th>
+                    <th>{{ t('total_passes') }}</th>
+                    <th>{{ t('pass_rate') }}</th>
+                    <th>{{ t('avg_duration') }}</th>
+                    <th>{{ t('est_cost') }}</th>
+                    {% if can_admin %}
+                    <th>{{ t('actions') }}</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for agent in agents %}
+                <tr>
+                    <td>{{ agent.name }}</td>
+                    <td><span class="badge badge-{{ agent.role.value }}">{{ agent.role.value }}</span></td>
+                    <td>{{ agent.total_runs or 0 }}</td>
+                    <td>{{ agent.total_passes or 0 }}</td>
+                    <td>
+                        {% if agent.total_runs and agent.total_runs > 0 %}
+                        {{ ((agent.total_passes or 0) / agent.total_runs * 100) | int }}%
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if agent.avg_duration_ms and agent.avg_duration_ms > 0 %}
+                        {{ (agent.avg_duration_ms / 1000) | round(1) }}s
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                    <td>{{ agent.estimated_cost or 0 }}</td>
+                    {% if can_admin %}
+                    <td>
+                        <button class="btn btn-sm"
+                                hx-post="/agents/{{ agent.id }}/reset-stats"
+                                hx-target="closest .stats-section"
+                                hx-swap="outerHTML"
+                                hx-confirm="{{ t('are_you_sure') }}">{{ t('reset_stats') }}</button>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+                {% if not agents %}
+                <tr><td colspan="8" class="text-muted">{{ t('no_data') }}</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>

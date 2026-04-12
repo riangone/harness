@@ -1,26 +1,39 @@
 {% for task in tasks %}
 <tr id="task-row-{{ task.id }}">
-    <td>{{ task.title }}</td>
-    <td class="text-muted">
+    <td data-label="{{ t('title') }}">
+        {{ task.title }}
+        {% if task.pipeline_mode %}<span class="badge badge-running" style="margin-left:0.4rem;font-size:0.65rem;">Pipeline</span>{% endif %}
+        {% if task.depends_on_id %}<span class="badge badge-failed" style="margin-left:0.3rem;font-size:0.6rem;" title="Depends on: {% for t in all_tasks %}{% if t.id == task.depends_on_id %}{{ t.title }}{% endif %}{% endfor %}">dep</span>{% endif %}
+        {% if task.parallel_group %}<span class="badge badge-running" style="margin-left:0.3rem;font-size:0.6rem;" title="Parallel: {{ task.parallel_group }}">||</span>{% endif %}
+    </td>
+    <td class="text-muted" data-label="{{ t('project') }}">
         {% for project in projects %}
             {% if project.id == task.project_id %}{{ project.name }}{% endif %}
         {% endfor %}
         {% if not task.project_id %}-{% endif %}
     </td>
-    <td class="text-muted">
+    <td class="text-muted" data-label="{{ t('agent') }}">
         {% for agent in agents %}
             {% if agent.id == task.agent_id %}{{ agent.name }}{% endif %}
         {% endfor %}
         {% if not task.agent_id %}Auto{% endif %}
     </td>
-    <td><span class="badge badge-{{ task.status.value }}">{{ task.status.value }}</span></td>
-    <td class="text-muted">{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-    <td class="actions-cell">
-        {% if task.status.value == 'pending' %}
+    <td data-label="{{ t('status') }}"><span class="badge badge-{{ task.status.value }}">{{ task.status.value }}</span></td>
+    <td class="text-muted" data-label="{{ t('created') }}">{{ task.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+    <td class="actions-cell" data-label="{{ t('actions') }}">
+        {% if can_edit %}
+        {% if task.status.value != 'running' %}
         <button class="btn btn-sm btn-primary"
                 hx-post="/tasks/{{ task.id }}/run"
                 hx-target="#run-result-{{ task.id }}"
-                hx-swap="innerHTML">{{ t('run') }}</button>
+                hx-swap="innerHTML">
+            {% if task.status.value == 'pending' %}{{ t('run') }}{% else %}{{ t('rerun') }}{% endif %}
+        </button>
+        <button class="btn btn-sm btn-outline"
+                hx-get="/tasks/{{ task.id }}/edit"
+                hx-target="#task-modal-body"
+                hx-swap="innerHTML"
+                hx-on::after-request="openTaskModal()">{{ t('edit') }}</button>
         {% endif %}
         <span id="run-result-{{ task.id }}"></span>
         <button class="btn btn-sm btn-danger"
@@ -28,6 +41,12 @@
                 hx-target="#task-row-{{ task.id }}"
                 hx-swap="outerHTML swap:1s"
                 hx-confirm="{{ t('are_you_sure') }}">{{ t('delete') }}</button>
+        {% else %}
+        <span class="text-muted">-</span>
+        {% endif %}
     </td>
 </tr>
 {% endfor %}
+{% if not tasks %}
+<tr><td colspan="6" class="text-muted">{{ t('no_data') }}</td></tr>
+{% endif %}

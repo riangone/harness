@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t('users') }} - Multi-AI Harness{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t('users') }}</h2>
+    <span class="text-muted small">({{ t('admin_only') }})</span>
+</div>
+
+<!-- Add User Form -->
+<details class="mb-3">
+    <summary>{{ t('add_user') }}</summary>
+    <div class="details-content">
+        <form hx-post="/users" hx-target="#users-list" hx-swap="outerHTML" accept-charset="UTF-8">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="username">{{ t('username') }}</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">{{ t('password') }}</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <div class="form-group">
+                    <label for="role">{{ t('user_role') }}</label>
+                    <select id="role" name="role">
+                        <option value="viewer">{{ t('role_viewer') }}</option>
+                        <option value="editor">{{ t('role_editor') }}</option>
+                        <option value="admin">{{ t('role_admin') }}</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="is_active" checked>
+                        {{ t('active') }}
+                    </label>
+                </div>
+            </div>
+            <button type="submit" class="btn">{{ t('add') }}</button>
+        </form>
+    </div>
+</details>
+
+<div id="users-list" hx-get="/users/list" hx-trigger="load, reloadUsers from:body">
+    <div class="table-wrapper">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>{{ t('username') }}</th>
+                    <th>{{ t('user_role') }}</th>
+                    <th>{{ t('status') }}</th>
+                    <th>{{ t('created') }}</th>
+                    <th>{{ t('last_run') }}</th>
+                    <th>{{ t('actions') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr id="user-{{ u.id }}">
+                    <td>{{ u.username }}</td>
+                    <td>
+                        <select hx-put="/users/{{ u.id }}/role"
+                                hx-trigger="change"
+                                hx-target="#users-list"
+                                hx-swap="outerHTML"
+                                name="role">
+                            <option value="admin" {% if u.role == 'admin' %}selected{% endif %}>{{ t('role_admin') }}</option>
+                            <option value="editor" {% if u.role == 'editor' %}selected{% endif %}>{{ t('role_editor') }}</option>
+                            <option value="viewer" {% if u.role == 'viewer' %}selected{% endif %}>{{ t('role_viewer') }}</option>
+                        </select>
+                    </td>
+                    <td>
+                        <span class="badge {% if u.is_active %}badge-completed{% else %}badge-failed{% endif %}">
+                            {% if u.is_active %}{{ t('active') }}{% else %}{{ t('failed') }}{% endif %}
+                        </span>
+                    </td>
+                    <td>{{ u.created_at.strftime('%Y-%m-%d %H:%M') if u.created_at else '-' }}</td>
+                    <td>{{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else '-' }}</td>
+                    <td>
+                        <button class="btn btn-sm"
+                                hx-post="/users/{{ u.id }}/toggle"
+                                hx-target="#users-list"
+                                hx-swap="outerHTML">
+                            {% if u.is_active %}{{ t('cancel') }}{% else %}{{ t('run') }}{% endif %}
+                        </button>
+                        {% if u.id != user.id %}
+                        <button class="btn btn-sm btn-danger"
+                                hx-delete="/users/{{ u.id }}"
+                                hx-target="#users-list"
+                                hx-swap="outerHTML"
+                                hx-confirm="{{ t('are_you_sure') }}">{{ t('delete') }}</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+                {% if not users %}
+                <tr><td colspan="6" class="text-muted">{{ t('no_data') }}</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

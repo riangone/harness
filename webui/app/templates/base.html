@@ -14,6 +14,7 @@
         })();
     </script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body hx-boost="true">
 <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
@@ -30,6 +31,10 @@
                 <li><a href="/projects" class="{% if request.url.path.startswith('/projects') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('projects') }}</a></li>
                 <li><a href="/tasks" class="{% if request.url.path.startswith('/tasks') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('tasks') }}</a></li>
                 <li><a href="/runs" class="{% if request.url.path.startswith('/runs') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('runs') }}</a></li>
+                <li><a href="/schedules" class="{% if request.url.path.startswith('/schedules') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('schedules') }}</a></li>
+                {% if user and user.role == 'admin' %}
+                <li><a href="/users" class="{% if request.url.path.startswith('/users') %}active{% endif %}" onclick="closeSidebarIfMobile()">{{ t('users') }}</a></li>
+                {% endif %}
             </ul>
         </nav>
         

@@ -82,6 +82,7 @@
                 <th>{{ t('priority') }}</th>
                 <th>{{ t('system_prompt') }}</th>
                 <th>{{ t('active') }}</th>
+                <th>{{ t('health_check') }}</th>
                 <th>{{ t('created') }}</th>
                 <th>{{ t('actions') }}</th>
             </tr>
@@ -95,6 +96,9 @@
         </tbody>
     </table>
 </div>
+
+<!-- Statistics Section -->
+<div id="agent-stats" hx-get="/agents/stats" hx-trigger="load, reloadAgentStats from:body"></div>
 
 <script>
 function openAgentModal() {

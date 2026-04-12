@@ -1,0 +1,66 @@
+<form hx-put="/tasks/{{ task.id }}"
+      hx-target="#tasks-tbody"
+      hx-swap="innerHTML"
+      hx-on::after-request="if(event.detail.successful) closeTaskModal()"
+      accept-charset="UTF-8">
+    <div class="form-group">
+        <label>{{ t('title') }}</label>
+        <input type="text" name="title" value="{{ task.title }}" required>
+    </div>
+    <div class="form-group">
+        <label>{{ t('prompt') }}</label>
+        <textarea name="prompt" rows="6" required>{{ task.prompt }}</textarea>
+    </div>
+    <div class="form-group">
+        <label>{{ t('success_criteria') }}</label>
+        <textarea name="success_criteria" rows="3" placeholder="{{ t('success_criteria_desc') }}">{{ task.success_criteria or '' }}</textarea>
+        <small class="text-muted">{{ t('success_criteria_desc') }}</small>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>{{ t('project_optional') }}</label>
+            <select name="project_id">
+                <option value="">{{ t('no_project') }}</option>
+                {% for project in projects %}
+                <option value="{{ project.id }}" {% if project.id == task.project_id %}selected{% endif %}>{{ project.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label>{{ t('agent_optional') }}</label>
+            <select name="agent_id">
+                <option value="">{{ t('auto_select') }}</option>
+                {% for agent in agents %}
+                <option value="{{ agent.id }}" {% if agent.id == task.agent_id %}selected{% endif %}>{{ agent.name }} ({{ agent.cli_command }})</option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="form-group">
+            <label>{{ t('depends_on') }}</label>
+            <select name="depends_on_id">
+                <option value="">{{ t('no_dependency') }}</option>
+                {% for t in all_tasks %}
+                <option value="{{ t.id }}" {% if t.id == task.depends_on_id %}selected{% endif %}>{{ t.title }}</option>
+                {% endfor %}
+            </select>
+            <small class="text-muted">{{ t('depends_on_desc') }}</small>
+        </div>
+        <div class="form-group">
+            <label>{{ t('parallel_group') }}</label>
+            <input type="text" name="parallel_group" value="{{ task.parallel_group or '' }}" placeholder="e.g. group-a">
+            <small class="text-muted">{{ t('parallel_group_desc') }}</small>
+        </div>
+    </div>
+    <div class="form-group">
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
+            <input type="checkbox" name="pipeline_mode" style="width:auto;" {% if task.pipeline_mode %}checked{% endif %}>
+            {{ t('pipeline_mode_desc') }}
+        </label>
+    </div>
+    <div class="modal-footer">
+        <button type="button" class="btn" onclick="closeTaskModal()">{{ t('cancel') }}</button>
+        <button type="submit" class="btn btn-primary">{{ t('save') }}</button>
+    </div>
+</form>
