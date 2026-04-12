@@ -117,6 +117,45 @@ def _read_file(path: str) -> str:
     return ""
 
 
+def _get_task_type(task: Task) -> str:
+    """task_meta から task_type を読み取る"""
+    if not task.task_meta:
+        return 'general'
+    try:
+        import json
+        meta = json.loads(task.task_meta) if isinstance(task.task_meta, str) else task.task_meta
+        return meta.get('task_type', 'general')
+    except Exception:
+        return 'general'
+
+
+def _collect_result(work_dir: str, task_type: str, run_log: str) -> str:
+    """タスクタイプに応じた成果物ファイルを収集してresultにセット"""
+    # タスクタイプ別の優先出力ファイル
+    output_files = {
+        'research':       ['report.md', 'output.md', 'result.md'],
+        'writing':        ['output.md', 'draft.md', 'article.md', 'story.md'],
+        'document':       ['document.md', 'slides.md', 'output.md', 'presentation.md'],
+        'file_ops':       [],  # ファイル操作はログのみ
+        'code_generation': [],  # コードはrun_logに含まれる
+        'code_review':    ['review.md', 'output.md'],
+        'bug_fix':        [],
+        'general':        ['output.md', 'result.md'],
+    }
+
+    candidates = output_files.get(task_type, ['output.md', 'result.md'])
+    for fname in candidates:
+        fpath = os.path.join(work_dir, fname)
+        content = _read_file(fpath)
+        if content:
+            return content
+
+    # ファイルがなければrun_logの末尾2000文字
+    if run_log:
+        return run_log[-2000:] if len(run_log) > 2000 else run_log
+    return ""
+
+
 def _parse_verdict(eval_file: str) -> str:
     """eval-report.md を読んで PASS / FAIL / UNKNOWN を返す"""
     content = _read_file(eval_file)
@@ -199,7 +238,8 @@ def _update_agent_stats(db: Session, agent: Agent, run: Run):
 # ────────────────────────────────────────────────────────────────
 
 def _build_eval_prompt(agent: Agent, task: Task, plan_content: str, work_dir: str) -> str:
-    """Evaluator 用プロンプトを構築（success_criteria を含む）"""
+    """Evaluator 用プロンプトを構築（タスクタイプ対応）"""
+    task_type = _get_task_type(task)
     parts = []
 
     if agent.system_prompt:
@@ -208,50 +248,79 @@ def _build_eval_prompt(agent: Agent, task: Task, plan_content: str, work_dir: st
     criteria_section = ""
     if task.success_criteria:
         criteria_section = f"""
-## スプリント契約（成功基準）
+## 成功基準
 以下の基準をすべて満たしているか確認してください：
 
 {task.success_criteria}
 
 各基準について [x] または [ ] でチェックしてください。"""
 
+    # タスクタイプ別評価基準
+    type_checklist = {
+        'code_generation': """- [x] 仕様通りに動作している
+- [x] エッジケースが処理されている
+- [x] セキュリティ上の問題なし
+- [x] コードスタイルが適切""",
+        'code_review': """- [x] セキュリティ問題を網羅的に確認した
+- [x] 具体的な修正提案が含まれている
+- [x] 優先度が明記されている""",
+        'bug_fix': """- [x] 根本原因が特定・修正されている
+- [x] 修正コードが動作する
+- [x] リグレッションがない""",
+        'research': """- [x] 調査内容が網羅的で正確
+- [x] 情報源が明示されている（可能な場合）
+- [x] 結論・提言が明確
+- [x] 読みやすく構造化されている""",
+        'writing': """- [x] 依頼内容に沿った内容
+- [x] 文章の流れが自然で読みやすい
+- [x] 誤字・脱字がない
+- [x] 目的・ターゲットに合ったトーン""",
+        'document': """- [x] 構成が論理的で見やすい
+- [x] 内容が正確で過不足ない
+- [x] 目的に合ったフォーマット""",
+        'file_ops': """- [x] 指定されたファイル操作が完了している
+- [x] データの損失がない
+- [x] 操作結果が確認できる""",
+        'general': """- [x] タスクの要求を満たしている
+- [x] 成果物が明確に存在する
+- [x] 品質が十分である""",
+    }
+    checklist = type_checklist.get(task_type, type_checklist['general'])
+
     parts.append(f"""以下の評価レポート形式で {work_dir}/eval-report.md に出力してください。
 
+PASSの場合:
 ```markdown
 # 評価レポート
 
-VERDICT: PASS または FAIL
+VERDICT: PASS
 
-## 確認事項（PASSの場合）
-- [x] 仕様通りに動作している
-- [x] エッジケースが処理されている
-- [x] セキュリティ上の問題なし
+## 確認事項
+{checklist}
 {criteria_section}
 ```
 
-失敗の場合:
+FAILの場合:
 ```markdown
 # 評価レポート
 
 VERDICT: FAIL
 
 ## 問題点
-- ISSUE[1]: ファイル:行 — 問題の説明。具体的な修正指示
+- ISSUE[1]: 問題の説明。具体的な修正指示
 - ISSUE[2]: ...
 
 ## 修正優先度
-HIGH: ISSUE[1], ISSUE[2]
-MEDIUM: ISSUE[3]
+HIGH: ISSUE[1]
+MEDIUM: ISSUE[2]
 ```
 
 必ず VERDICT: PASS または VERDICT: FAIL のいずれかを明記してください。""")
 
     if plan_content:
-        parts.append(f"""実装計画（plan.md）の内容:
+        parts.append(f"計画（plan.md）:\n\n{plan_content}")
 
-{plan_content}""")
-
-    parts.append(f"評価対象タスク: {task.prompt}")
+    parts.append(f"評価対象タスク（タイプ: {task_type}）: {task.prompt}")
 
     return "\n\n".join(parts)
 
@@ -296,10 +365,12 @@ def _fail_task(db: Session, task: Task):
     db.commit()
 
 
-def _complete_task(db: Session, task: Task):
+def _complete_task(db: Session, task: Task, result: str = None):
     """Task を completed に更新"""
     task.status = TaskStatus.completed
     task.updated_at = datetime.utcnow()
+    if result:
+        task.result = result
     db.commit()
 
 
@@ -358,7 +429,8 @@ def _run_single_command(
 
 def _build_gen_prompt(agent: Agent, task: Task, plan_content: str,
                       eval_content: str, attempt: int) -> str:
-    """Generator 用プロンプトを構築（retry 時は eval-report.md の問題点を含める）"""
+    """Generator 用プロンプトを構築（タスクタイプ対応・retry対応）"""
+    task_type = _get_task_type(task)
     parts = []
 
     if agent.system_prompt:
@@ -369,16 +441,30 @@ def _build_gen_prompt(agent: Agent, task: Task, plan_content: str,
 
 {eval_content}
 
-上記の問題点をすべて修正した実装を出力してください。""")
+上記の問題点をすべて修正して再度出力してください。""")
     elif attempt > 1:
-        parts.append(f"前回の問題を修正して実装してください。(試行 {attempt})")
+        parts.append(f"前回の問題を修正して再実行してください。(試行 {attempt})")
+
+    # タスクタイプ別の生成指示
+    type_instructions = {
+        'code_generation': "以下の計画に従ってコードを生成し、ファイルとして出力してください。",
+        'code_review':     "以下の計画に従ってコードをレビューし、問題点と改善提案をまとめてください。",
+        'bug_fix':         "以下の計画に従ってバグを修正したコードを出力してください。",
+        'research':        "以下の調査計画に従って調査・情報収集を行い、report.md に構造化されたレポートを出力してください。",
+        'writing':         "以下の執筆計画に従って文章を作成し、output.md に出力してください。",
+        'document':        "以下の計画に従って資料・ドキュメントを作成し、document.md に出力してください。PPTのスライド内容ならMarkdown形式のスライド構成で記述してください。",
+        'file_ops':        "以下の計画に従ってファイル・フォルダ操作を実行してください。",
+        'general':         "以下の計画に従ってタスクを実行し、成果物を output.md に出力してください。",
+    }
+    instruction = type_instructions.get(task_type, type_instructions['general'])
 
     if plan_content:
-        parts.append(f"""以下の実装計画に従ってコードを生成してください:
+        parts.append(f"""{instruction}
 
+計画（plan.md）:
 {plan_content}""")
 
-    parts.append(f"タスク: {task.prompt}")
+    parts.append(f"タスク（タイプ: {task_type}）: {task.prompt}")
 
     return "\n\n".join(parts)
 
@@ -519,6 +605,8 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
     plan_file = os.path.join(work_dir, "plan.md")
     eval_file = os.path.join(work_dir, "eval-report.md")
 
+    task_type = _get_task_type(task)
+
     # Phase 1: Planning
     planner = _get_agents_by_role(db, "planner")
     if not planner:
@@ -529,11 +617,25 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
         _fail_task(db, task)
         return
 
+    # タスクタイプ別プランナー指示
+    plan_instructions = {
+        'code_generation': f"コード実装計画を {plan_file} に出力してください。使用言語・設計方針・テスト計画を含めること。",
+        'code_review':     f"レビュー計画を {plan_file} に出力してください。確認項目・重点領域・評価基準を含めること。",
+        'bug_fix':         f"バグ修正計画を {plan_file} に出力してください。根本原因分析・修正手順・検証方法を含めること。",
+        'research':        f"調査計画を {plan_file} に出力してください。調査項目・アプローチ・最終アウトプット形式を含めること。最終成果物は {work_dir}/report.md に出力する想定。",
+        'writing':         f"執筆計画を {plan_file} に出力してください。構成・章立て・文体・文字数目安を含めること。最終成果物は {work_dir}/output.md に出力する想定。",
+        'document':        f"資料作成計画を {plan_file} に出力してください。構成・セクション数・内容の概要を含めること。最終成果物は {work_dir}/document.md に出力する想定。",
+        'file_ops':        f"ファイル操作計画を {plan_file} に出力してください。操作対象・手順・安全確認方法を含めること。",
+        'general':         f"実行計画を {plan_file} に出力してください。手順・成果物・検証方法を含めること。最終成果物は {work_dir}/output.md に出力する想定。",
+    }
+    plan_instruction = plan_instructions.get(task_type, plan_instructions['general'])
+
     planning_prompt = f"""{planner.system_prompt or ''}
 
 タスク: {task.prompt}
 
-作業ディレクトリ {plan_file} に詳細な実装計画を出力してください。"""
+作業ディレクトリ: {work_dir}
+{plan_instruction}"""
 
     planning_run = _create_run(db, task, planner, "planning", attempt=1)
     planning_success = _run_single_command(
@@ -608,7 +710,8 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
         db.commit()
 
         if verdict == "PASS":
-            _complete_task(db, task)
+            result = _collect_result(work_dir, task_type, gen_run.log)
+            _complete_task(db, task, result=result)
             return
 
         if attempt == 3:

@@ -189,18 +189,20 @@ class MailGateway:
 
         task_content = self._extract_task_content_from_subject_and_body(subject, body, rule.pattern)
 
+        task_type = rule.task_type or rule.pipeline or 'general'
         task = {
             'source': 'email',
             'from_addr': from_addr,
             'pipeline': rule.pipeline,
-            'task_type': rule.task_type or rule.pipeline,
+            'task_type': task_type,
             'input': task_content,
             'subject': subject,
             'callback_url': callback_url,
             'metadata': {
                 'rule_matched': rule.pattern,
                 'action': rule.action,
-                'from_addr': from_addr
+                'from_addr': from_addr,
+                'task_type': task_type,
             }
         }
 
@@ -229,28 +231,36 @@ class MailGateway:
         """生成帮助回复"""
         return """🤖 harness - AI Agent Orchestrator
 
-可用命令：
+自然言語で直接指示できます。コマンドプレフィックスは不要です。
 
-📝 代码生成：
-  /generate <描述>  或  /gen <描述>
-  示例：/generate 写一个快速排序函数
+📝 コード開発：
+  コードを書いて、関数を実装して、バグを直して、レビューして
+  /generate /review /fix も使用可能
 
-🔍 代码审查：
-  /review <描述>
-  示例：/review 审查src/auth.py的安全性
+🔍 調査・リサーチ：
+  〇〇について調査して、〇〇のレポートを作って、まとめて
+  最新トレンド、競合分析、技術調査など
 
-🐛 Bug修复：
-  /fix <描述>
-  示例：/fix 修复登录页面的空指针异常
+✍️ 文章・執筆：
+  ブログ記事を書いて、小説の冒頭を書いて、メール文を作って
+  SNS投稿、エッセイ、手紙、キャッチコピーなど
 
-💡 帮助：
-  /help  或  ?  显示此帮助信息
+📊 ドキュメント・資料：
+  PPTのスライドを作って、仕様書を書いて、議事録を整理して
+  PDF、Word、Excel形式の資料作成
 
-提示：
-- 直接描述你的需求也可以
-- 支持多轮对话，回复本邮件可继续
+📁 ファイル・フォルダ整理：
+  フォルダを整理して、ファイルを一括リネームして
+
+💡 なんでも：
+  上記に限らず、自然言語でどんな指示も受け付けます
 
 ---
+例：
+  「最近のAI動向について調査レポートを作ってください」
+  「Pythonでユーザー認証APIを実装して」
+  「営業向けの提案書スライドを5枚作って」
+
 harness AI Orchestrator"""
 
     # --- 出站邮件格式化 ---

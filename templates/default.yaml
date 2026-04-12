@@ -1,27 +1,58 @@
-# 默认Pipeline模板
-# 当没有匹配到特定模板时使用
+# 汎用フォールバック Pipeline テンプレート
+# どんな自然言語の指示にも対応する汎用パイプライン
+# コマンドプレフィックス不要、自然言語で直接指示可能
 
 name: default_pipeline
 version: 1
-description: 默认单步执行Pipeline
+description: 汎用フォールバックパイプライン（自然言語対応）
 
 trigger:
-  task_type: default
+  task_type:
+    - default
+    - general
   auto_apply: true
 
 steps:
-  - id: execute
+  # Step 1: タスク分析・計画
+  - id: planning
+    agent:
+      role: planner
+      model_selector:
+        strategy: quality
+    action: plan
+    output_file: plan.md
+    prompt_hint: |
+      ユーザーの指示を分析し、最適な実行計画を plan.md に出力してください。
+      指示の意図を正確に把握し、成果物と手順を明確にすること。
+
+  # Step 2: タスク実行
+  - id: generating
     agent:
       role: generator
       model_selector:
         strategy: balanced
-    action: execute_task
-    output_key: result
+    action: generate
+    output_file: output.md
+    prompt_hint: |
+      計画に従ってタスクを実行し、成果物を output.md に出力してください。
+      テキスト・コード・データなど形式は問いません。
+
+  # Step 3: 品質確認
+  - id: evaluating
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality
+    action: evaluate
+    output_file: eval-report.md
+    verdict_required: true
 
 on_success:
+  - action: collect_file
+    file: output.md
   - action: log
-    message: "Task completed successfully"
+    message: "タスクが完了しました"
 
 on_failure:
   - action: log
-    message: "Task failed, check logs for details"
+    message: "タスクが失敗しました。ログを確認してください"

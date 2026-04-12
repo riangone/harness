@@ -1,0 +1,63 @@
+# 調査・リサーチ Pipeline テンプレート
+# 自然言語で「〇〇について調査して」「レポートを作って」などの指示に対応
+
+name: research_pipeline
+version: 1
+description: 調査・情報収集・レポート生成パイプライン
+
+trigger:
+  task_type: research
+  auto_apply: true
+
+steps:
+  # Step 1: 調査計画の策定
+  - id: planning
+    agent:
+      role: planner
+      model_selector:
+        strategy: quality   # 高品質モデルで計画策定
+    action: plan
+    output_file: plan.md
+    prompt_hint: |
+      調査テーマを分析し、以下を含む調査計画を plan.md に出力してください：
+      1. 調査スコープと目的
+      2. 調査項目リスト（優先度付き）
+      3. 情報収集アプローチ
+      4. 最終レポートの構成案
+
+  # Step 2: 調査・レポート生成
+  - id: generating
+    agent:
+      role: generator
+      model_selector:
+        strategy: balanced
+    action: generate
+    output_file: report.md
+    prompt_hint: |
+      調査計画に従い、網羅的な調査を行い report.md に出力してください。
+      レポート形式：
+      - エグゼクティブサマリー
+      - 詳細調査結果（項目別）
+      - 考察・分析
+      - 結論・提言
+      - 参考情報
+
+  # Step 3: レポート品質評価
+  - id: evaluating
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality
+    action: evaluate
+    output_file: eval-report.md
+    verdict_required: true
+
+on_success:
+  - action: collect_file
+    file: report.md
+  - action: log
+    message: "調査レポートが完成しました"
+
+on_failure:
+  - action: log
+    message: "調査タスクが失敗しました。ログを確認してください"

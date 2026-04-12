@@ -1,0 +1,61 @@
+# 文章執筆 Pipeline テンプレート
+# 自然言語で「〇〇を書いて」「記事を作って」などの指示に対応
+
+name: writing_pipeline
+version: 1
+description: 文章作成・執筆・コンテンツ生成パイプライン
+
+trigger:
+  task_type: writing
+  auto_apply: true
+
+steps:
+  # Step 1: 執筆計画・アウトライン
+  - id: planning
+    agent:
+      role: planner
+      model_selector:
+        strategy: quality
+    action: plan
+    output_file: plan.md
+    prompt_hint: |
+      執筆依頼を分析し、以下を含む執筆計画を plan.md に出力してください：
+      1. コンテンツの目的とターゲット読者
+      2. 文体・トーン（フォーマル/カジュアル/エモーショナルなど）
+      3. 構成・章立て・セクション構成
+      4. キーメッセージと伝えたいこと
+      5. 文字数目安
+
+  # Step 2: 文章生成
+  - id: generating
+    agent:
+      role: generator
+      model_selector:
+        strategy: quality   # 文章品質重視
+    action: generate
+    output_file: output.md
+    prompt_hint: |
+      執筆計画に従い、高品質な文章を output.md に出力してください。
+      - 自然な日本語（または指定言語）で書く
+      - 読みやすい段落構成
+      - 目的に合ったトーンを維持
+
+  # Step 3: 文章品質評価
+  - id: evaluating
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality
+    action: evaluate
+    output_file: eval-report.md
+    verdict_required: true
+
+on_success:
+  - action: collect_file
+    file: output.md
+  - action: log
+    message: "文章が完成しました"
+
+on_failure:
+  - action: log
+    message: "執筆タスクが失敗しました"

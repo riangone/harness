@@ -1,0 +1,60 @@
+# ファイル・フォルダ操作 Pipeline テンプレート
+# 自然言語で「フォルダを整理して」「ファイルを一括リネームして」などの指示に対応
+
+name: file_ops_pipeline
+version: 1
+description: ファイル・フォルダ操作パイプライン
+
+trigger:
+  task_type: file_ops
+  auto_apply: true
+
+steps:
+  # Step 1: 操作計画の策定（安全確認）
+  - id: planning
+    agent:
+      role: planner
+      model_selector:
+        strategy: quality
+    action: plan
+    output_file: plan.md
+    prompt_hint: |
+      ファイル操作依頼を分析し、安全な実行計画を plan.md に出力してください：
+      1. 操作の対象（パス・ファイルパターン）
+      2. 実行する操作の詳細（移動/コピー/削除/リネームなど）
+      3. 安全確認事項（データ損失リスクの評価）
+      4. 実行コマンド案（bash/python）
+      5. 検証方法
+
+      ※ 削除・上書き操作は慎重に。バックアップの必要性も検討すること。
+
+  # Step 2: ファイル操作実行
+  - id: generating
+    agent:
+      role: generator
+      model_selector:
+        strategy: balanced
+    action: generate
+    prompt_hint: |
+      計画に従ってファイル操作を実行してください。
+      - 操作前後の状態をログに残す
+      - エラーが発生した場合は中断して報告
+      - 完了後に操作結果を summary として出力
+
+  # Step 3: 操作結果の検証
+  - id: evaluating
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality
+    action: evaluate
+    output_file: eval-report.md
+    verdict_required: true
+
+on_success:
+  - action: log
+    message: "ファイル操作が完了しました"
+
+on_failure:
+  - action: log
+    message: "ファイル操作が失敗しました。ログを確認してください"

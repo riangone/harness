@@ -349,6 +349,8 @@ async def create_task_from_email(
             metadata['callback_url'] = req.callback_url
         metadata['from_addr'] = req.from_addr
         metadata['subject'] = req.subject
+        metadata['task_type'] = task_data.get('task_type', 'general')
+        metadata['input'] = task_data['input']
 
         task = Task(
             title=f"[email] {task_data['input'][:80]}",

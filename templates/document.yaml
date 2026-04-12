@@ -1,0 +1,74 @@
+# ドキュメント・資料作成 Pipeline テンプレート
+# 自然言語で「PPTを作って」「仕様書を書いて」などの指示に対応
+
+name: document_pipeline
+version: 1
+description: ドキュメント・資料・スライド作成パイプライン
+
+trigger:
+  task_type: document
+  auto_apply: true
+
+steps:
+  # Step 1: 資料構成計画
+  - id: planning
+    agent:
+      role: planner
+      model_selector:
+        strategy: quality
+    action: plan
+    output_file: plan.md
+    prompt_hint: |
+      資料作成依頼を分析し、以下を含む計画を plan.md に出力してください：
+      1. 資料の目的・用途（プレゼン/仕様書/議事録/マニュアルなど）
+      2. 対象読者・想定シーン
+      3. 構成・セクション一覧（スライドならページ数と各ページの内容）
+      4. 使用するフォーマット・スタイル
+      5. 含めるべきキーコンテンツ
+
+  # Step 2: ドキュメント生成
+  - id: generating
+    agent:
+      role: generator
+      model_selector:
+        strategy: balanced
+    action: generate
+    output_file: document.md
+    prompt_hint: |
+      計画に従い、資料を document.md に出力してください。
+
+      PPT/スライドの場合は以下の Markdown 形式を使用：
+      ```markdown
+      # スライド 1: タイトル
+      ## サブタイトル
+      - ポイント1
+      - ポイント2
+
+      ---
+
+      # スライド 2: 〇〇
+      ...
+      ```
+
+      仕様書・マニュアルの場合は標準的な Markdown 文書形式で。
+      議事録の場合は日時・参加者・議題・決定事項・アクションアイテム形式で。
+
+  # Step 3: 品質評価
+  - id: evaluating
+    agent:
+      role: evaluator
+      model_selector:
+        strategy: quality
+    action: evaluate
+    output_file: eval-report.md
+    verdict_required: true
+
+on_success:
+  - action: collect_file
+    file: document.md
+  - action: log
+    message: "ドキュメントが完成しました"
+
+on_failure:
+  - action: log
+    message: "ドキュメント作成タスクが失敗しました"
