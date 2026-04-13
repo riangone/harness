@@ -4,6 +4,7 @@ import os
 import shlex
 import re
 import shutil
+import logging
 from datetime import datetime
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -12,6 +13,35 @@ from sqlalchemy.orm import Session
 
 from app.models import Task, Run, Agent, Project, TaskStatus, RunStatus, Schedule
 from app.database import SessionLocal
+
+logger = logging.getLogger(__name__)
+
+# ────────────────────────────────────────────────────────────────
+# 記憶サービス（遅延初期化シングルトン）
+# ────────────────────────────────────────────────────────────────
+
+_memory_service = None
+_memory_lock = threading.Lock()
+
+
+def _get_memory():
+    """MemoryService のシングルトンを返す（遅延初期化）"""
+    global _memory_service
+    if _memory_service is None:
+        with _memory_lock:
+            if _memory_service is None:
+                try:
+                    from core.memory.service import MemoryService
+                    _harness_root = os.path.abspath(
+                        os.path.join(os.path.dirname(__file__), "..", "..", "..")
+                    )
+                    db_path = os.path.join(_harness_root, "data", "memory.db")
+                    _memory_service = MemoryService(db_path)
+                    logger.info(f"MemoryService 初期化完了: {db_path}")
+                except Exception as e:
+                    logger.warning(f"MemoryService 初期化失敗（記憶機能無効）: {e}")
+                    return None
+    return _memory_service
 
 # ────────────────────────────────────────────────────────────────
 # TaskExecutor: 実行中のタスクを追跡
@@ -428,13 +458,18 @@ def _run_single_command(
 # ────────────────────────────────────────────────────────────────
 
 def _build_gen_prompt(agent: Agent, task: Task, plan_content: str,
-                      eval_content: str, attempt: int) -> str:
-    """Generator 用プロンプトを構築（タスクタイプ対応・retry対応）"""
+                      eval_content: str, attempt: int,
+                      memory_context: str = "") -> str:
+    """Generator 用プロンプトを構築（タスクタイプ対応・retry対応・記憶注入対応）"""
     task_type = _get_task_type(task)
     parts = []
 
     if agent.system_prompt:
         parts.append(agent.system_prompt)
+
+    # 過去の成功経験を few-shot として注入（初回試行のみ）
+    if memory_context and attempt == 1:
+        parts.append(memory_context)
 
     if attempt > 1 and eval_content:
         parts.append(f"""前回の評価で以下の問題が指摘されています。必ず修正してください:
@@ -601,11 +636,50 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
     """
     パイプライン実行: planner → generator → evaluator
     コンテキスト分離: ファイル（plan.md, eval-report.md）のみをフェーズ間で受け渡し
+
+    記憶統合:
+    - Planner: 過去のスキルテンプレート + プロジェクトコンテキストを注入
+    - Generator: 過去の成功経験を few-shot で注入
+    - PASS 時: スキル登録 + 成功経験保存
+    - FAIL 時: 教訓抽出 + 失敗経験保存 + AGENTS.md 自動更新チェック
     """
     plan_file = os.path.join(work_dir, "plan.md")
     eval_file = os.path.join(work_dir, "eval-report.md")
 
     task_type = _get_task_type(task)
+    memory = _get_memory()
+
+    # ── プロジェクトコンテキストを収集（実プロジェクトディレクトリのみ）──
+    project_context = ""
+    try:
+        from core.memory.auto_improve import collect_project_context
+        project_context = collect_project_context(work_dir)
+        if project_context:
+            logger.info(f"プロジェクトコンテキスト収集完了: {len(project_context)} 文字")
+    except Exception as e:
+        logger.warning(f"プロジェクトコンテキスト収集失敗: {e}")
+
+    # ── 過去スキルを取得（Planner 強化用）──
+    past_skill = ""
+    if memory:
+        try:
+            from core.memory.auto_improve import retrieve_skill
+            past_skill = retrieve_skill(memory, task_type) or ""
+            if past_skill:
+                logger.info(f"過去スキル取得: task_type={task_type}")
+        except Exception as e:
+            logger.warning(f"スキル取得失敗: {e}")
+
+    # ── 過去の成功経験を取得（Generator few-shot 用）──
+    memory_context = ""
+    if memory:
+        try:
+            memories = memory.retrieve_similar(task_type, limit=3, outcome_filter='success')
+            if memories:
+                memory_context = memory.build_context_from_memories(memories)
+                logger.info(f"記憶 {len(memories)} 件を Generator に注入します")
+        except Exception as e:
+            logger.warning(f"記憶検索失敗: {e}")
 
     # Phase 1: Planning
     planner = _get_agents_by_role(db, "planner")
@@ -630,12 +704,20 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
     }
     plan_instruction = plan_instructions.get(task_type, plan_instructions['general'])
 
-    planning_prompt = f"""{planner.system_prompt or ''}
-
-タスク: {task.prompt}
-
-作業ディレクトリ: {work_dir}
-{plan_instruction}"""
+    # プランナープロンプト（プロジェクトコンテキスト + 過去スキルを注入）
+    planner_parts = []
+    if planner.system_prompt:
+        planner_parts.append(planner.system_prompt)
+    if project_context:
+        planner_parts.append(project_context)
+    if past_skill:
+        planner_parts.append(
+            f"## 過去の成功計画テンプレート（参考）\n\n"
+            f"以下は同種タスクで成功した計画の例です。参考にして今回の計画を立ててください:\n\n"
+            f"```\n{past_skill}\n```"
+        )
+    planner_parts.append(f"タスク: {task.prompt}\n\n作業ディレクトリ: {work_dir}\n{plan_instruction}")
+    planning_prompt = "\n\n".join(planner_parts)
 
     planning_run = _create_run(db, task, planner, "planning", attempt=1)
     planning_success = _run_single_command(
@@ -673,7 +755,11 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
         plan_content = _read_file(plan_file)
         eval_content = _read_file(eval_file) if attempt > 1 else ""
 
-        gen_prompt = _build_gen_prompt(generator, task, plan_content, eval_content, attempt)
+        # 記憶コンテキストは初回試行のみ注入（retry時は eval フィードバックを優先）
+        gen_prompt = _build_gen_prompt(
+            generator, task, plan_content, eval_content, attempt,
+            memory_context=memory_context
+        )
 
         gen_run = _create_run(db, task, generator, "generating", attempt=attempt)
         gen_success = _run_single_command(
@@ -685,6 +771,8 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
 
         if not gen_success:
             if attempt == 3:
+                # 全試行失敗: 教訓を保存
+                _store_failure_experience(memory, task_type, eval_content, attempt)
                 _fail_task(db, task)
                 return
             continue
@@ -692,6 +780,8 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
         # Phase 3: Evaluation
         evaluator = _get_agents_by_role(db, "evaluator")
         if not evaluator:
+            # Evaluator なしで完了
+            _store_success_experience(memory, task_type, plan_content, generator.cli_command, attempt)
             _complete_task(db, task)
             return
 
@@ -710,15 +800,65 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
         db.commit()
 
         if verdict == "PASS":
+            # ── 成功: スキル登録 + 経験保存 ──
+            _store_success_experience(memory, task_type, plan_content, generator.cli_command, attempt)
             result = _collect_result(work_dir, task_type, gen_run.log)
             _complete_task(db, task, result=result)
             return
+
+        # FAIL: 教訓保存
+        eval_content_full = _read_file(eval_file)
+        _store_failure_experience(memory, task_type, eval_content_full, attempt)
 
         if attempt == 3:
             _fail_task(db, task)
             return
 
     _fail_task(db, task)
+
+
+# ────────────────────────────────────────────────────────────────
+# 経験保存ヘルパー
+# ────────────────────────────────────────────────────────────────
+
+def _store_success_experience(memory, task_type: str, plan_content: str,
+                               generator_cli: str, attempt: int):
+    """成功経験を記憶に保存してスキルを登録する"""
+    if not memory:
+        return
+    try:
+        from core.memory.auto_improve import register_skill
+        register_skill(memory, task_type, plan_content, generator_cli, attempt)
+        logger.info(f"成功経験を保存: task_type={task_type}, attempt={attempt}")
+    except Exception as e:
+        logger.warning(f"成功経験の保存に失敗: {e}")
+
+
+def _store_failure_experience(memory, task_type: str, eval_content: str, attempt: int):
+    """失敗経験を記憶に保存し、パターン蓄積時は AGENTS.md を自動更新する"""
+    if not memory:
+        return
+    try:
+        from core.memory.auto_improve import build_lesson, check_and_update_agents_md
+        lesson = build_lesson(task_type, eval_content, attempt)
+        memory.store_experience(
+            task_type=task_type,
+            outcome='failed',
+            data={
+                'lesson': lesson,
+                'patterns': [],
+                'tags': [task_type, f"attempt_{attempt}"],
+            },
+            agent_role='generator',
+        )
+        logger.info(f"失敗経験を保存: task_type={task_type}, attempt={attempt}")
+
+        # 失敗が閾値を超えたら AGENTS.md を自動更新
+        updated = check_and_update_agents_md(memory, task_type)
+        if updated:
+            logger.info(f"AGENTS.md を自動更新しました: task_type={task_type}")
+    except Exception as e:
+        logger.warning(f"失敗経験の保存に失敗: {e}")
 
 
 # ────────────────────────────────────────────────────────────────
