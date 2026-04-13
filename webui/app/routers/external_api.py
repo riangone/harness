@@ -8,6 +8,7 @@ External API — harness HTTP API 層
 
 可独立部署（harness_api.py）或嵌入 WebUI（本文件）。
 """
+import os
 from fastapi import APIRouter, Depends, HTTPException, Header, BackgroundTasks, Request
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
@@ -92,6 +93,7 @@ class CallbackPayload(BaseModel):
     from_addr: Optional[str] = None  # 原始发件人地址（供 MailMindHub 回复）
     runs: List[Dict[str, Any]] = []
     email_content: Optional[Dict[str, str]] = None  # {subject, body} 供 MailMindHub 回复邮件
+    attachments: List[Dict[str, str]] = []  # [{filename, content_type, data_base64}]
 
 
 class EmailTaskRequest(BaseModel):
@@ -207,6 +209,24 @@ def _send_webhook_callback(task_id: int, db_session):
             except (json.JSONDecodeError, TypeError):
                 pass
 
+        # .pptx ファイルを base64 添付として収集
+        attachments = []
+        result_val = task.result or ""
+        if result_val.startswith("__pptx__:"):
+            pptx_path = result_val[len("__pptx__:"):]
+            try:
+                import base64
+                with open(pptx_path, "rb") as f:
+                    data_b64 = base64.b64encode(f.read()).decode("utf-8")
+                attachments.append({
+                    "filename": os.path.basename(pptx_path),
+                    "content_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    "data_base64": data_b64,
+                })
+                logger.info(f"PPTX attachment prepared: {pptx_path} ({len(data_b64)} base64 chars)")
+            except Exception as e:
+                logger.warning(f"Failed to attach pptx: {e}")
+
         payload = CallbackPayload(
             task_id=task.id,
             status=task.status.value if hasattr(task.status, 'value') else str(task.status),
@@ -214,7 +234,8 @@ def _send_webhook_callback(task_id: int, db_session):
             result=task.result,
             from_addr=from_addr,
             runs=run_data,
-            email_content=email_content
+            email_content=email_content,
+            attachments=attachments,
         ).model_dump()
 
         # 发送 POST 请求

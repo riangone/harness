@@ -30,7 +30,11 @@ class PPTXRenderer(BaseTool):
             return ToolResult(success=False, error=f"input not found: {input_file}", duration_ms=int((time.time()-start)*1000))
 
         def _run():
-            cmd = [sys.executable, str(Path.cwd() / "scripts" / "tools" / "render_pptx.py"), "--input", str(input_file), "--output", str(output_file)]
+            # .venv_pptx に python-pptx がインストールされている場合はそちらを優先使用
+            harness_root = Path(__file__).resolve().parents[3]
+            venv_python = harness_root / ".venv_pptx" / "bin" / "python"
+            python_exe = str(venv_python) if venv_python.exists() else sys.executable
+            cmd = [python_exe, str(harness_root / "scripts" / "tools" / "render_pptx.py"), "--input", str(input_file), "--output", str(output_file)]
             proc = subprocess.run(cmd, capture_output=True, text=True, cwd=work_dir)
             return proc
 

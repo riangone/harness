@@ -424,6 +424,7 @@ class PipelineEngine:
         tool_registry = ToolRegistry.get_instance()
         tool = tool_registry.get(step.tool)
         if not tool:
+            logger.error(f"tool '{step.tool}' not found in registry")
             return StepResult(step_id=step.id, success=False, error=f"tool '{step.tool}' not found", duration_ms=0, attempt=attempt)
 
         # resolve params
@@ -432,6 +433,7 @@ class PipelineEngine:
         # validate
         err = tool.validate_params(resolved)
         if err:
+            logger.error(f"Parameter validation failed for tool '{step.tool}': {err}")
             return StepResult(step_id=step.id, success=False, error=f"param validation failed: {err}", duration_ms=0, attempt=attempt)
 
         try:

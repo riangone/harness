@@ -60,7 +60,7 @@ routing:
   
   # Fallback链：当首选不可用时依次尝试
   fallback_chain:
-    - try: [qwen, gemini]  # 优先生成器
+    - try: [gh-copilot, qwen]  # 优先生成器
     - try: [claude]         # 然后Claude
     - try: [codex]          # 最后Codex
 

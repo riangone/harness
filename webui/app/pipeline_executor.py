@@ -297,10 +297,23 @@ def _finish_run(db, run, success: bool):
 
 def _execute_single(db, task, work_dir, timeout=None) -> bool:
     """单 AI 执行"""
-    agent = db.query(Agent).filter(
-        Agent.cli_command == "qwen",
-        Agent.is_active == True
-    ).first()
+    # Select first available generator according to config fallback order
+    agent = None
+    try:
+        from app.config_loader import preferred_cli_order_for_role
+        preferred = preferred_cli_order_for_role('generator') or []
+    except Exception:
+        preferred = []
+
+    if preferred:
+        for cli in preferred:
+            agent = db.query(Agent).filter(Agent.cli_command == cli, Agent.is_active == True).first()
+            if agent:
+                break
+
+    if not agent:
+        # fallback to any active generator by role
+        agent = db.query(Agent).filter(Agent.role == AgentRole.generator, Agent.is_active == True).order_by(Agent.priority.asc()).first()
 
     if not agent:
         task.status = TaskStatus.failed
@@ -356,13 +369,29 @@ def _execute_pipeline(db, task, work_dir, timeout=None) -> bool:
 
     # Phase 2: Generation + Evaluation loop
     generators = _get_all_generators(db)
+    # Reorder generators according to config fallback_chain/preference
+    try:
+        from app.config_loader import preferred_cli_order_for_role
+        preferred = preferred_cli_order_for_role('generator') or []
+    except Exception:
+        preferred = []
+
+    if preferred:
+        ordered = []
+        for cli in preferred:
+            ag = next((a for a in generators if a.cli_command == cli), None)
+            if ag:
+                ordered.append(ag)
+        for a in generators:
+            if a not in ordered:
+                ordered.append(a)
+        generators = ordered
+
     if not generators:
-        qwen = db.query(Agent).filter(
-            Agent.cli_command == "qwen",
-            Agent.is_active == True
-        ).first()
-        if qwen:
-            generators = [qwen]
+        # final fallback: any generator by role
+        gen = db.query(Agent).filter(Agent.role == AgentRole.generator, Agent.is_active == True).order_by(Agent.priority.asc()).first()
+        if gen:
+            generators = [gen]
 
     if not generators:
         task.status = TaskStatus.failed

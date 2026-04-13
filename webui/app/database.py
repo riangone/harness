@@ -151,15 +151,36 @@ def seed_agents():
 
     db = SessionLocal()
     try:
-        seeds = [
-            Agent(name='Claude Planner', cli_command='claude', role=AgentRole.planner, priority=10, system_prompt='仕様策定・タスク分解を担当します。', is_active=True),
-            Agent(name='Qwen Generator', cli_command='qwen', role=AgentRole.generator, priority=10, system_prompt='コード生成・実装を担当します。', is_active=True),
-            Agent(name='Claude Evaluator', cli_command='claude', role=AgentRole.evaluator, priority=10, system_prompt='コードレビュー・品質評価を担当します。問題があれば具体的な修正箇所を指摘してください。', is_active=True),
-            Agent(name='Gemini Researcher', cli_command='gemini', role=AgentRole.researcher, priority=10, system_prompt='大規模調査・Web検索を担当します。', is_active=True),
-            Agent(name='Gemini Bug Fixer', cli_command='gemini', role=AgentRole.generator, priority=5, system_prompt='バグ修正に特化します。根本原因を分析して修正してください。', is_active=True),
-            Agent(name='Codex Generator', cli_command='codex', role=AgentRole.generator, priority=15, system_prompt='コード生成の補助を担当します。', is_active=True),
-            Agent(name='GitHub Copilot', cli_command='gh-copilot', role=AgentRole.generator, priority=20, system_prompt='GitHub Copilot CLIを使ったコード提案を担当します。', is_active=True),
+        # Seed agents: start from built-in defaults and assign priority from config if available
+        from app.config_loader import load_models_config, preferred_cli_order_for_role
+        cfg = load_models_config()
+
+        builtin = [
+            {'name':'Claude Planner','cli_command':'claude','role':AgentRole.planner,'system_prompt':'仕様策定・タスク分解を担当します。','is_active':True},
+            {'name':'Qwen Generator','cli_command':'qwen','role':AgentRole.generator,'system_prompt':'コード生成・実装を担当します。','is_active':True},
+            {'name':'Claude Evaluator','cli_command':'claude','role':AgentRole.evaluator,'system_prompt':'コードレビュー・品質評価を担当します。問題があれば具体的な修正箇所を指摘してください。','is_active':True},
+            {'name':'Gemini Researcher','cli_command':'gemini','role':AgentRole.researcher,'system_prompt':'大規模調査・Web検索を担当します。','is_active':True},
+            {'name':'Gemini Bug Fixer','cli_command':'gemini','role':AgentRole.generator,'system_prompt':'バグ修正に特化します。根本原因を分析して修正してください。','is_active':True},
+            {'name':'Codex Generator','cli_command':'codex','role':AgentRole.generator,'system_prompt':'コード生成の補助を担当します。','is_active':True},
+            {'name':'GitHub Copilot','cli_command':'gh-copilot','role':AgentRole.generator,'system_prompt':'GitHub Copilot CLIを使ったコード提案を担当します。','is_active':True},
         ]
+
+        seeds = []
+        for item in builtin:
+            role_name = item['role'].name if hasattr(item['role'], 'name') else str(item['role'])
+            try:
+                preferred = preferred_cli_order_for_role(role_name) or []
+            except Exception:
+                preferred = []
+            cli = item['cli_command']
+            if cli in preferred:
+                idx = preferred.index(cli)
+                priority = 10 + idx * 10
+            else:
+                # default priority: generators get 50, others 10
+                priority = 50 if item['role'] == AgentRole.generator else 10
+            seeds.append(Agent(name=item['name'], cli_command=item['cli_command'], role=item['role'], priority=priority, system_prompt=item['system_prompt'], is_active=item['is_active']))
+
         for s in seeds:
             db.add(s)
         db.commit()

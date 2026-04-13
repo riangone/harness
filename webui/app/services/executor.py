@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import threading
 import os
 import shlex
@@ -161,6 +162,17 @@ def _get_task_type(task: Task) -> str:
 
 def _collect_result(work_dir: str, task_type: str, run_log: str) -> str:
     """タスクタイプに応じた成果物ファイルを収集してresultにセット"""
+    # pptx_deck: .pptx ファイルパスを result として返す（添付送信のため）
+    if task_type == 'pptx_deck':
+        pptx_path = os.path.join(work_dir, "presentation.pptx")
+        if os.path.exists(pptx_path):
+            return f"__pptx__:{pptx_path}"
+        # フォールバック: slides.json や slides.md
+        for fname in ['slides.json', 'slides.md', 'document.md']:
+            content = _read_file(os.path.join(work_dir, fname))
+            if content:
+                return content
+
     # タスクタイプ別の優先出力ファイル
     output_files = {
         'research':       ['report.md', 'output.md', 'result.md'],
@@ -459,7 +471,7 @@ def _run_single_command(
 
 def _build_gen_prompt(agent: Agent, task: Task, plan_content: str,
                       eval_content: str, attempt: int,
-                      memory_context: str = "") -> str:
+                      memory_context: str = "", work_dir: str = "") -> str:
     """Generator 用プロンプトを構築（タスクタイプ対応・retry対応・記憶注入対応）"""
     task_type = _get_task_type(task)
     parts = []
@@ -488,6 +500,20 @@ def _build_gen_prompt(agent: Agent, task: Task, plan_content: str,
         'research':        "以下の調査計画に従って調査・情報収集を行い、report.md に構造化されたレポートを出力してください。",
         'writing':         "以下の執筆計画に従って文章を作成し、output.md に出力してください。",
         'document':        "以下の計画に従って資料・ドキュメントを作成し、document.md に出力してください。PPTのスライド内容ならMarkdown形式のスライド構成で記述してください。",
+        'pptx_deck':       (
+            f"以下の計画に従ってプレゼンテーションのスライドデータを作成し、"
+            f"必ず {work_dir}/slides.json に保存してください。\n"
+            f"slides.json の内容は純粋な JSON のみ（説明文・Markdownコードブロック不要）:\n"
+            '{\n'
+            '  "title": "プレゼンタイトル",\n'
+            '  "subtitle": "サブタイトル（任意）",\n'
+            '  "slides": [\n'
+            '    {"layout": "content", "title": "スライドタイトル", "content": ["箇条書き1", "箇条書き2"]},\n'
+            '    ...\n'
+            '  ]\n'
+            '}\n'
+            f"このJSONファイルを {work_dir}/slides.json として保存することが唯一のゴールです。"
+        ),
         'file_ops':        "以下の計画に従ってファイル・フォルダ操作を実行してください。",
         'general':         "以下の計画に従ってタスクを実行し、成果物を output.md に出力してください。",
     }
@@ -602,10 +628,25 @@ def _execute_single(db: Session, task: Task, work_dir: str):
             agent = None
 
     if not agent:
-        agent = db.query(Agent).filter(
-            Agent.cli_command == "qwen",
-            Agent.is_active == True
-        ).first()
+        # Select first available generator according to config fallback order
+        try:
+            from app.config_loader import preferred_cli_order_for_role
+            preferred = preferred_cli_order_for_role('generator') or []
+        except Exception:
+            preferred = []
+
+        selected = None
+        for cli in preferred:
+            candidate = db.query(Agent).filter(Agent.cli_command == cli, Agent.is_active == True).first()
+            if candidate and _check_cli_available(candidate.cli_command):
+                selected = candidate
+                break
+
+        if selected is None:
+            # Fallback to any available generator (priority order)
+            selected = _get_agents_by_role(db, "generator")
+
+        agent = selected
 
     if not agent:
         task.status = TaskStatus.failed
@@ -630,6 +671,46 @@ def _execute_single(db: Session, task: Task, work_dir: str):
 
     task.status = TaskStatus.completed if success else TaskStatus.failed
     db.commit()
+
+
+def _run_render_pptx(db: Session, run: Run, work_dir: str):
+    """スライドデータ → presentation.pptx に変換する（pptx_deck タイプ専用）
+    slides.json → slides.md → document.md の順で入力ファイルを探す"""
+    import subprocess as _sp
+    from pathlib import Path as _Path
+
+    harness_root = _Path(__file__).resolve().parents[3]
+    venv_python = harness_root / ".venv_pptx" / "bin" / "python"
+    python_exe = str(venv_python) if venv_python.exists() else sys.executable
+    script = harness_root / "scripts" / "tools" / "render_pptx.py"
+    output_file = os.path.join(work_dir, "presentation.pptx")
+
+    # 入力ファイルを優先順で探す
+    candidates = ["slides.json", "slides.md", "document.md", "output.md"]
+    input_file = None
+    for fname in candidates:
+        fpath = os.path.join(work_dir, fname)
+        if os.path.exists(fpath) and os.path.getsize(fpath) > 0:
+            input_file = fpath
+            break
+
+    if not input_file:
+        _append_log(db, run, "\n[render_pptx] 入力ファイルが見つかりません（slides.json/slides.md/document.md）。スキップします。\n")
+        return
+
+    _append_log(db, run, f"\n[render_pptx] {os.path.basename(input_file)} → presentation.pptx に変換中...\n")
+    try:
+        proc = _sp.run(
+            [python_exe, str(script), "--input", input_file, "--output", output_file],
+            capture_output=True, text=True, cwd=work_dir, timeout=60
+        )
+        if proc.returncode == 0 and os.path.exists(output_file):
+            size = os.path.getsize(output_file)
+            _append_log(db, run, f"[render_pptx] 変換成功: presentation.pptx ({size} bytes)\n")
+        else:
+            _append_log(db, run, f"[render_pptx] 変換失敗: {proc.stderr or proc.stdout}\n")
+    except Exception as e:
+        _append_log(db, run, f"[render_pptx] 例外: {e}\n")
 
 
 def _execute_pipeline(db: Session, task: Task, work_dir: str):
@@ -699,6 +780,7 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
         'research':        f"調査計画を {plan_file} に出力してください。調査項目・アプローチ・最終アウトプット形式を含めること。最終成果物は {work_dir}/report.md に出力する想定。",
         'writing':         f"執筆計画を {plan_file} に出力してください。構成・章立て・文体・文字数目安を含めること。最終成果物は {work_dir}/output.md に出力する想定。",
         'document':        f"資料作成計画を {plan_file} に出力してください。構成・セクション数・内容の概要を含めること。最終成果物は {work_dir}/document.md に出力する想定。",
+        'pptx_deck':       f"プレゼンテーション構成計画を {plan_file} に出力してください。スライド枚数・各スライドのタイトルと要点・全体の流れを含めること。最終成果物は {work_dir}/slides.json → {work_dir}/presentation.pptx に出力する想定。",
         'file_ops':        f"ファイル操作計画を {plan_file} に出力してください。操作対象・手順・安全確認方法を含めること。",
         'general':         f"実行計画を {plan_file} に出力してください。手順・成果物・検証方法を含めること。最終成果物は {work_dir}/output.md に出力する想定。",
     }
@@ -733,17 +815,31 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
 
     # Phase 2: Generation + Evaluation loop (最大3回)
     generators = _get_agents_by_role_all(db, "generator")
-    # Prefer qwen generator when available
+    # Reorder generators according to config fallback_chain/preference
     try:
-        qwen_agent = next((a for a in generators if a.cli_command == "qwen"), None)
-        if qwen_agent:
-            generators = [qwen_agent] + [a for a in generators if a.id != qwen_agent.id]
+        from app.config_loader import preferred_cli_order_for_role
     except Exception:
-        pass
+        preferred = []
+    else:
+        preferred = preferred_cli_order_for_role('generator') or []
+
+    if preferred:
+        ordered = []
+        for cli in preferred:
+            ag = next((a for a in generators if a.cli_command == cli), None)
+            if ag:
+                ordered.append(ag)
+        # append remaining generators not in ordered
+        for a in generators:
+            if a not in ordered:
+                ordered.append(a)
+        generators = ordered
+
     if not generators:
-        qwen = _fallback_agent(db, "qwen")
-        if qwen:
-            generators = [qwen]
+        # final fallback: any active generator
+        gen = _get_agents_by_role(db, "generator")
+        if gen:
+            generators = [gen]
 
     if not generators:
         _fail_task(db, task)
@@ -758,7 +854,7 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
         # 記憶コンテキストは初回試行のみ注入（retry時は eval フィードバックを優先）
         gen_prompt = _build_gen_prompt(
             generator, task, plan_content, eval_content, attempt,
-            memory_context=memory_context
+            memory_context=memory_context, work_dir=work_dir
         )
 
         gen_run = _create_run(db, task, generator, "generating", attempt=attempt)
@@ -776,6 +872,10 @@ def _execute_pipeline(db: Session, task: Task, work_dir: str):
                 _fail_task(db, task)
                 return
             continue
+
+        # pptx_deck: slides.json → presentation.pptx に変換
+        if task_type == 'pptx_deck':
+            _run_render_pptx(db, gen_run, work_dir)
 
         # Phase 3: Evaluation
         evaluator = _get_agents_by_role(db, "evaluator")

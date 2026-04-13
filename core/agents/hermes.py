@@ -15,6 +15,7 @@ from datetime import datetime
 
 from core.tools.registry import ToolRegistry
 from core.tools.base import ToolResult
+from core.memory.compressor import ContextCompressor
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,12 @@ class HermesAgent:
 <final_answer>...</final_answer>
 """
 
-    def __init__(self, tools: List[str] = None, max_react_steps: int = 6, model: str = "claude", work_dir: str = "."):
+    def __init__(self, tools: List[str] = None, max_react_steps: int = 6, model: str = "claude", compressor: ContextCompressor = None, work_dir: str = "."):
         self.registry = ToolRegistry.get_instance()
         self.tool_names = tools
         self.max_react_steps = max_react_steps
         self.model = model
+        self.compressor = compressor or ContextCompressor()
         self.work_dir = work_dir
 
     async def run(self, task: str, context: Dict = None) -> HermesResult:
@@ -149,8 +151,94 @@ class HermesAgent:
         return thought, tool_calls, is_final, final_answer
 
     async def _execute_parallel_tools(self, tool_calls: List[Dict]) -> List[ToolResult]:
-        tasks = [self._execute_single_tool(tc) for tc in tool_calls]
-        return await asyncio.gather(*tasks, return_exceptions=False)
+        """
+        Execute multiple tool calls with dependency-aware batching.
+        Tool calls may include an optional "id" field. If a tool_call's params reference
+        "{{steps.<id>.output}}" and <id> corresponds to another tool_call in this batch,
+        the execution will ensure the dependency is satisfied (sequential batches).
+        """
+        # build id map for intra-batch dependencies
+        id_map = {tc.get('id'): tc for tc in tool_calls if tc.get('id')}
+        remaining = list(tool_calls)
+        completed = {}
+        results = []
+
+        while remaining:
+            # find ready calls (deps within id_map satisfied)
+            ready = []
+            for tc in remaining:
+                params = tc.get('params', {})
+                deps = self._extract_deps_from_params(params)
+                deps_in_map = [d for d in deps if d in id_map]
+                if all(d in completed for d in deps_in_map):
+                    ready.append(tc)
+
+            if not ready:
+                # deadlock: run remaining in parallel to avoid hang
+                logger.warning("Deadlock detected in tool_call dependencies; executing remaining in parallel")
+                ready = list(remaining)
+
+            # resolve params for ready calls using completed results
+            tasks = [self._execute_single_tool_with_resolution(tc, completed) for tc in ready]
+            batch_results = await asyncio.gather(*tasks, return_exceptions=False)
+
+            for tc, res in zip(ready, batch_results):
+                results.append(res)
+                cid = tc.get('id')
+                if cid:
+                    completed[cid] = res
+                remaining.remove(tc)
+
+        return results
+
+    async def _execute_single_tool_with_resolution(self, tool_call: Dict, completed_results: Dict[str, ToolResult]) -> ToolResult:
+        """Resolve params placeholders using completed_results, then execute the tool call."""
+        params = tool_call.get('params', {})
+        resolved = self._resolve_tool_call_params(params, completed_results, {})
+        tc = dict(tool_call)
+        tc['params'] = resolved
+        return await self._execute_single_tool(tc)
+
+    def _extract_deps_from_params(self, params: Dict) -> List[str]:
+        """Extract referenced step ids from params placeholders like {{steps.<id>.output}}"""
+        import re
+        deps = set()
+        raw = json.dumps(params)
+        for m in re.finditer(r"\{\{\s*steps\.([a-zA-Z0-9_]+)\.", raw):
+            deps.add(m.group(1))
+        return list(deps)
+
+    def _resolve_tool_call_params(self, params: Dict, completed_results: Dict[str, ToolResult], context: Dict) -> Dict:
+        """Replace placeholders in params with outputs from completed_results or context."""
+        import re
+        resolved = {}
+        for k, v in (params or {}).items():
+            if isinstance(v, str) and "{{" in v:
+                def repl(m):
+                    expr = m.group(1).strip()
+                    if expr.startswith('steps.'):
+                        parts = expr.split('.')
+                        if len(parts) >= 3:
+                            step_id = parts[1]
+                            key = parts[2]
+                            if step_id in completed_results:
+                                val = completed_results[step_id].output
+                                # if requesting specific key, try to extract
+                                if isinstance(val, dict) and key in val:
+                                    return str(val.get(key, ''))
+                                return str(val or '')
+                        return ''
+                    if expr.startswith('context.'):
+                        key = expr.split('.', 1)[1]
+                        return str(context.get(key, ''))
+                    if expr == 'task_input':
+                        return str(context.get('task_input', ''))
+                    return ''
+                newv = re.sub(r"\{\{\s*(.*?)\s*\}\}", repl, v)
+                resolved[k] = newv
+            else:
+                resolved[k] = v
+        return resolved
 
     async def _execute_single_tool(self, tool_call: Dict) -> ToolResult:
         name = tool_call.get('name')
@@ -175,5 +263,13 @@ class HermesAgent:
                 content = json.dumps({'output': obs.output, **obs.metadata}, ensure_ascii=False)
             else:
                 content = f"Error: {obs.error}"
+
+            # compress long observation content
+            try:
+                if len(content) > 2000 and hasattr(self, 'compressor') and self.compressor:
+                    content = self.compressor.compress_with_summary(content, summary_length=500)
+            except Exception as e:
+                logger.warning(f"Compressor failed: {e}")
+
             parts.append(f'<observation tool="{name}" success="{success}">\n{content}\n</observation>')
         return "\n\n".join(parts)

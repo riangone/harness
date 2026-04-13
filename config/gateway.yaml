@@ -43,9 +43,15 @@ mail:
       pipeline: research
       task_type: research
 
+    # ── 自然语言：PPT / プレゼンテーション（専用パイプラインで .pptx 生成）──
+    - pattern: "(?i)(PPT|PowerPoint|パワーポイント|スライド|プレゼン|発表資料|presentation|slides|幻灯片|演示文稿|pptx)"
+      action: create_task
+      pipeline: pptx_deck
+      task_type: pptx_deck
+
     # ── 自然语言：ドキュメント・資料（執筆より先に評価） ────────
     # 「仕様書を書いて」のように「書いて」を含む表現でも正しく document にマッチさせる
-    - pattern: "(?i)(PPT|PowerPoint|スライド|プレゼン|発表資料|PDF|Word|Excel|スプレッドシート|資料作成|議事録|マニュアル|仕様書|ドキュメント作成|presentation|slides|spreadsheet|幻灯片|演示|文档)"
+    - pattern: "(?i)(PDF|Word|Excel|スプレッドシート|資料作成|議事録|マニュアル|仕様書|ドキュメント作成|spreadsheet|幻灯片|演示|文档)"
       action: create_task
       pipeline: document
       task_type: document
