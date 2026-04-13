@@ -34,19 +34,24 @@ class ToolRegistry:
             from .renderers.docx import DocxRenderer
             from .operators.browser import BrowserOperator
             from .operators.http import HttpCaller
-        except Exception:
-            # If imports fail (missing deps), skip registration
+            from .operators.file import FileOperator
+            from .operators.shell import ShellExecutor
+        except Exception as e:
+            # If imports fail (missing deps), skip registration but log the issue
+            import logging
+            logging.getLogger(__name__).warning(f"Skipping default tool registration due to import error: {e}")
             return
 
         defaults = [
             MarpRenderer(), PDFRenderer(), PPTXRenderer(),
-            ExcelRenderer(), DocxRenderer(), BrowserOperator(), HttpCaller()
+            ExcelRenderer(), DocxRenderer(), BrowserOperator(), HttpCaller(), FileOperator(), ShellExecutor()
         ]
         for tool in defaults:
             try:
                 self.register(tool)
-            except Exception:
-                pass
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).exception(f"Failed to register tool {getattr(tool, 'name', tool)}: {e}")
 
     def register(self, tool: BaseTool):
         self._tools[tool.name] = tool
