@@ -23,8 +23,30 @@ class ToolRegistry:
         return cls._instance
 
     def _register_defaults(self):
-        # Intentionally empty for now; concrete renderers will register themselves
-        return
+        """Register default tools available in the harness.
+        Imports are done lazily and failures are ignored to allow partial availability in tests.
+        """
+        try:
+            from .renderers.marp import MarpRenderer
+            from .renderers.pdf import PDFRenderer
+            from .renderers.pptx import PPTXRenderer
+            from .renderers.excel import ExcelRenderer
+            from .renderers.docx import DocxRenderer
+            from .operators.browser import BrowserOperator
+            from .operators.http import HttpCaller
+        except Exception:
+            # If imports fail (missing deps), skip registration
+            return
+
+        defaults = [
+            MarpRenderer(), PDFRenderer(), PPTXRenderer(),
+            ExcelRenderer(), DocxRenderer(), BrowserOperator(), HttpCaller()
+        ]
+        for tool in defaults:
+            try:
+                self.register(tool)
+            except Exception:
+                pass
 
     def register(self, tool: BaseTool):
         self._tools[tool.name] = tool

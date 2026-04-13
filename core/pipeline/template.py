@@ -32,7 +32,10 @@ class StepInput:
 class PipelineStep:
     """Pipeline步骤定义"""
     id: str
+    type: str = "agent"  # "agent" or "tool_call"
     agent: Optional[StepAgent] = None
+    tool: Optional[str] = None
+    tool_params: Dict[str, Any] = field(default_factory=dict)
     action: str = None
     input: Optional[StepInput] = None
     condition: Optional[str] = None  # 条件表达式
@@ -144,7 +147,10 @@ class TemplateLoader:
 
             step = PipelineStep(
                 id=step_data['id'],
+                type=step_data.get('type', 'agent'),
                 agent=agent,
+                tool=step_data.get('tool'),
+                tool_params=step_data.get('tool_params', {}),
                 action=step_data.get('action'),
                 input=step_input,
                 condition=step_data.get('condition'),

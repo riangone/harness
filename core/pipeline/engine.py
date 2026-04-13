@@ -232,6 +232,10 @@ class PipelineEngine:
         start_time = time.time()
 
         try:
+            # tool_call step handling
+            if getattr(step, 'type', 'agent') == 'tool_call':
+                return await self._execute_tool_call_step(step, context, prev_results, attempt)
+
             # 1. 选择模型
             model = None
             if step.agent:
@@ -406,6 +410,80 @@ class PipelineEngine:
         # 可通过模板metadata配置
         critical_steps = template.metadata.get('critical_steps', [])
         return failed_step.id in critical_steps
+
+    async def _execute_tool_call_step(self, step, context, prev_results, attempt):
+        """
+        Execute a tool_call step by resolving params, validating and invoking the tool.
+        """
+        import time
+        start = time.time()
+
+        # lazy import ToolRegistry to avoid circular imports
+        from core.tools.registry import ToolRegistry
+
+        tool_registry = ToolRegistry.get_instance()
+        tool = tool_registry.get(step.tool)
+        if not tool:
+            return StepResult(step_id=step.id, success=False, error=f"tool '{step.tool}' not found", duration_ms=0, attempt=attempt)
+
+        # resolve params
+        resolved = self._resolve_tool_params(step.tool_params, context, prev_results)
+
+        # validate
+        err = tool.validate_params(resolved)
+        if err:
+            return StepResult(step_id=step.id, success=False, error=f"param validation failed: {err}", duration_ms=0, attempt=attempt)
+
+        try:
+            tool_result = await tool.run(resolved, work_dir=context.get("work_dir", "."))
+            duration_ms = int((time.time() - start) * 1000)
+            return StepResult(
+                step_id=step.id,
+                success=tool_result.success,
+                output=tool_result.output or tool_result.metadata,
+                error=tool_result.error,
+                duration_ms=duration_ms,
+                model_used=None,
+                attempt=attempt
+            )
+        except Exception as e:
+            duration_ms = int((time.time() - start) * 1000)
+            return StepResult(step_id=step.id, success=False, error=str(e), duration_ms=duration_ms, attempt=attempt)
+
+
+    def _resolve_tool_params(self, params: dict, context: dict, prev_results: Dict[str, StepResult]) -> dict:
+        """Resolve simple placeholder expressions in tool params.
+
+        Supported placeholders:
+          {{ steps.<id>.output }}  -> previous step output
+          {{ context.<key> }}      -> execution context value
+          {{ task_input }}         -> task input
+        """
+        import re
+        resolved = {}
+        for k, v in (params or {}).items():
+            if isinstance(v, str) and "{{" in v:
+                def repl(m):
+                    expr = m.group(1).strip()
+                    if expr.startswith("steps."):
+                        parts = expr.split('.')
+                        if len(parts) >= 3 and parts[1] in prev_results:
+                            # e.g. steps.generating.output
+                            step_key = parts[1]
+                            return str(prev_results.get(step_key).output or '')
+                        return ''
+                    if expr.startswith("context."):
+                        key = expr.split('.', 1)[1]
+                        return str(context.get(key, ''))
+                    if expr == 'task_input':
+                        return str(context.get('task_input', ''))
+                    return ''
+                newv = re.sub(r"\{\{\s*(.*?)\s*\}\}", repl, v)
+                resolved[k] = newv
+            else:
+                resolved[k] = v
+        return resolved
+
 
     def get_template_info(self) -> List[Dict]:
         """获取所有模板信息"""
