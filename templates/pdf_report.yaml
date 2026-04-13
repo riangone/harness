@@ -1,0 +1,42 @@
+name: pdf_report_pipeline
+version: 1
+description: Markdown/HTML を PDF レポートとして出力するパイプライン
+
+trigger:
+  task_type: pdf_report
+  auto_apply: true
+
+steps:
+  - id: planning
+    agent:
+      role: planner
+    action: plan
+    output_file: plan.md
+
+  - id: generating
+    agent:
+      role: generator
+    action: generate
+    output_file: report.md
+    prompt_hint: |
+      計画に従い、PDF レンダリング用の Markdown を report.md に出力してください。
+
+  - id: render_pdf
+    type: tool_call
+    tool: pdf_renderer
+    tool_params:
+      input_file: "report.md"
+      output_file: "report.pdf"
+      engine: "weasyprint"
+
+  - id: evaluating
+    agent:
+      role: evaluator
+    action: evaluate
+    output_file: eval-report.md
+
+on_success:
+  - action: collect_file
+    file: report.pdf
+  - action: collect_file
+    file: report.md

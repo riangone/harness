@@ -1,0 +1,37 @@
+name: pptx_deck_pipeline
+version: 1
+description: python-pptx で PowerPoint ファイルを生成するパイプライン
+
+trigger:
+  task_type: pptx_deck
+  auto_apply: true
+
+steps:
+  - id: planning
+    agent:
+      role: planner
+    action: plan
+    output_file: plan.md
+
+  - id: generating
+    agent:
+      role: generator
+    action: generate
+    output_file: slides.json
+
+  - id: render_pptx
+    type: tool_call
+    tool: pptx_renderer
+    tool_params:
+      input_file: "slides.json"
+      output_file: "presentation.pptx"
+
+  - id: evaluating
+    agent:
+      role: evaluator
+    action: evaluate
+    output_file: eval-report.md
+
+on_success:
+  - action: collect_file
+    file: presentation.pptx

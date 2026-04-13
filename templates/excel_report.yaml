@@ -1,0 +1,37 @@
+name: excel_report_pipeline
+version: 1
+description: openpyxl で Excel ファイルを生成するパイプライン
+
+trigger:
+  task_type: excel_report
+  auto_apply: true
+
+steps:
+  - id: planning
+    agent:
+      role: planner
+    action: plan
+    output_file: plan.md
+
+  - id: generating
+    agent:
+      role: generator
+    action: generate
+    output_file: data.json
+
+  - id: render_excel
+    type: tool_call
+    tool: excel_renderer
+    tool_params:
+      input_file: "data.json"
+      output_file: "report.xlsx"
+
+  - id: evaluating
+    agent:
+      role: evaluator
+    action: evaluate
+    output_file: eval-report.md
+
+on_success:
+  - action: collect_file
+    file: report.xlsx

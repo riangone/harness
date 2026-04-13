@@ -1,0 +1,7 @@
+{
+  "title": "Sample Presentation",
+  "slides": [
+    {"layout": "title", "title": "Title Slide", "content": ["Subtitle"]},
+    {"layout": "content", "title": "Slide 2", "content": ["Point 1", "Point 2"]}
+  ]
+}

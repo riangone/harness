@@ -1,0 +1,57 @@
+name: marp_slides_pipeline
+version: 1
+description: Marp Markdown からスライド (PDF/HTML/PPTX) を生成するパイプライン
+
+trigger:
+  task_type: marp_slides
+  auto_apply: true
+
+metadata:
+  output_formats: [pdf, html, pptx]
+  requires_tool: marp
+
+steps:
+  - id: planning
+    agent:
+      role: planner
+    action: plan
+    output_file: plan.md
+
+  - id: generating
+    agent:
+      role: generator
+    action: generate
+    output_file: slides.md
+
+  - id: render_marp
+    type: tool_call
+    tool: marp_renderer
+    tool_params:
+      input_file: "slides.md"
+      output_file: "slides.pdf"
+      format: "pdf"
+      theme: "default"
+      auto_inject_frontmatter: true
+
+  - id: render_marp_html
+    type: tool_call
+    tool: marp_renderer
+    tool_params:
+      input_file: "slides.md"
+      output_file: "slides.html"
+      format: "html"
+
+  - id: evaluating
+    agent:
+      role: evaluator
+    action: evaluate
+    output_file: eval-report.md
+    condition: "{{ steps.render_marp.success }}"
+
+on_success:
+  - action: collect_file
+    file: slides.pdf
+  - action: collect_file
+    file: slides.html
+  - action: collect_file
+    file: slides.md
